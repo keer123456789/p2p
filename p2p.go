@@ -339,7 +339,7 @@ func (service *P2P) addressHandler() {
 			peers := service.GetPeers()
 			if peers != nil && len(peers) > 0 {
 				addReq := &message.AddrReq{}
-				service.SendMsg(peers[rand.Intn(len(peers))], addReq)
+				service.sendMsg(peers[rand.Intn(len(peers))], addReq)
 			}
 		}
 
@@ -365,7 +365,7 @@ func (service *P2P) recvHandler() {
 					State: service.getLocalState(),
 				}
 				peer := service.GetPeerByAddress(msg.from)
-				service.SendMsg(peer, pingMsg)
+				service.sendMsg(peer, pingMsg)
 			case *message.PongMsg:
 				peer := service.GetPeerByAddress(msg.from)
 				peer.SetState(msg.payload.(*message.PongMsg).State)
@@ -399,16 +399,16 @@ func (service *P2P) BroadCast(msg message.Message) {
 	service.lock.RLock()
 	defer service.lock.RUnlock()
 	for _, peer := range service.outbountPeers {
-		go service.SendMsg(peer, msg)
+		go service.sendMsg(peer, msg)
 	}
 
 	for _, peer := range service.inboundPeers {
-		go service.SendMsg(peer, msg)
+		go service.sendMsg(peer, msg)
 	}
 }
 
-// SendMsg send message to a peer.
-func (service *P2P) SendMsg(peer *Peer, msg message.Message) error {
+// sendMsg send message to a peer.
+func (service *P2P) sendMsg(peer *Peer, msg message.Message) error {
 	message := &internalMsg{
 		service.addrManager.OurAddress(),
 		peer.addr,

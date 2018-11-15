@@ -169,7 +169,7 @@ OUT:
 	}
 	peer := p2p.GetPeers()[0]
 	go func() {
-		err := p2p.SendMsg(peer, msg)
+		err := p2p.sendMsg(peer, msg)
 		assert.Nil(err)
 	}()
 	// read message from peer's send channel

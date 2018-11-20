@@ -15,7 +15,7 @@ func (this *Version) ResponseMsgType() MessageType {
 
 // Version ack message
 type VersionAck struct {
-	Version uint32 `json:"version"`
+	Version string `json:"version"`
 }
 
 func (this *VersionAck) MsgType() MessageType {

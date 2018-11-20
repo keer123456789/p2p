@@ -2,12 +2,12 @@ package p2p
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"github.com/DSiSc/craft/log"
 	"github.com/DSiSc/p2p/common"
 	"github.com/DSiSc/p2p/message"
 	"github.com/DSiSc/p2p/version"
-	"github.com/pkg/errors"
 	"net"
 	"strconv"
 	"sync"
@@ -23,8 +23,11 @@ const (
 type PeerStatus int
 
 const (
-	INIT      = PeerStatus(iota) //initial
-	ESTABLISH                    //receive peer`s verack
+	INIT        = PeerStatus(iota) //initial
+	HAND                           //send verion to peer
+	HAND_SHAKE                     //haven`t send verion to peer and receive peer`s version
+	HAND_SHAKED                    //send verion to peer and receive peer`s version
+	ESTABLISH                      //receive peer`s verack
 	STOPPED
 )
 
@@ -69,10 +72,11 @@ func newPeer(addr *common.NetAddress, outBound, persistent bool, msgChan chan<- 
 
 // Start connect to peer and send message to each other
 func (peer *Peer) Start() error {
+	log.Info("Start peer %s", peer.GetAddr().ToString())
 	peer.lock.Lock()
 	defer peer.lock.Unlock()
 	if peer.status != INIT {
-		return errors.New("peer has started")
+		return errors.New("peer has been started")
 	}
 
 	if peer.outBound {
@@ -80,26 +84,17 @@ func (peer *Peer) Start() error {
 		if err != nil {
 			return err
 		}
-		err = peer.negotiateOutBound()
+		err = peer.sendVersionMsg()
 		if err != nil {
+			log.Error("failed to send version message")
 			return err
 		}
+		peer.status = HAND
 	} else {
 		if peer.conn == nil {
 			return errors.New("have no established connection")
 		}
-		err := peer.negotiateInBound()
-		if err != nil {
-			return err
-		}
 	}
-
-	err := peer.connSendMessage(&message.VersionAck{})
-	if err != nil {
-		return err
-	}
-
-	peer.status = ESTABLISH
 	go peer.recvHandler()
 	go peer.sendHandler()
 	return nil
@@ -107,11 +102,15 @@ func (peer *Peer) Start() error {
 
 // Stop stop peer.
 func (peer *Peer) Stop() {
+	log.Info("Stop peer %s", peer.GetAddr().ToString())
+
+	peer.lock.Lock()
+	defer peer.lock.Unlock()
 	if peer.conn != nil {
 		peer.conn.Close()
 	}
-	peer.setStatus(STOPPED)
 	close(peer.quitChan)
+	peer.status = STOPPED
 }
 
 // initConnection init the connection to peer.
@@ -124,26 +123,6 @@ func (peer *Peer) initConn() error {
 	}
 	peer.conn = conn
 	return nil
-}
-
-// negotiate outbound peer
-func (peer *Peer) negotiateOutBound() error {
-	err := peer.sendVersionMsg()
-	if err != nil {
-		log.Error("failed to send version message")
-		return err
-	}
-	return peer.readVersionMsg()
-}
-
-// negotiate inbound peer
-func (peer *Peer) negotiateInBound() error {
-	err := peer.readVersionMsg()
-	if err != nil {
-		log.Error("failed to read version message")
-		return err
-	}
-	return peer.sendVersionMsg()
 }
 
 // send version message to remote
@@ -160,29 +139,55 @@ func (peer *Peer) sendVersionMsg() error {
 }
 
 // read versin mesage from remote
-func (peer *Peer) readVersionMsg() error {
-	msg, err := peer.connReadMessage()
-	if err != nil {
-		log.Error("failed to receive remote version message")
-		return err
+func (peer *Peer) handleVersionMsg(vmsg *message.Version) error {
+	peer.lock.Lock()
+	if peer.status != INIT && peer.status != HAND {
+		return fmt.Errorf("unknown status to received version,%d,%s\n", peer.status, peer.addr.ToString())
 	}
-	rvmsg, ok := msg.(*message.Version)
-	if !ok {
-		log.Error("a version message must precede all others")
-		return errors.New("a version message must precede all others")
+	var msg message.Message
+	if peer.status == INIT {
+		peer.status = HAND_SHAKE
+		msg = &message.Version{
+			Version: version.Version,
+		}
+	} else {
+		peer.status = HAND_SHAKED
+		msg = &message.VersionAck{
+			Version: version.Version,
+		}
 	}
-	if !version.Accept(rvmsg.Version) {
-		log.Error("unacceptable version peer")
-		return errors.New("unacceptable version peer")
+	peer.lock.Unlock()
+	return peer.connSendMessage(msg)
+}
+
+// read versin mesage from remote
+func (peer *Peer) handleVersionAckMsg(vackmsg *message.VersionAck) error {
+	peer.lock.Lock()
+	defer peer.lock.Unlock()
+	if peer.status != HAND_SHAKE && peer.status != HAND_SHAKED {
+		return fmt.Errorf("unknown status to received verAck,state:%d,%s\n", peer.status, peer.addr.ToString())
 	}
+	peer.status = ESTABLISH
+	if peer.status == HAND_SHAKE {
+		vmsg := &message.VersionAck{
+			Version: version.Version,
+		}
+		err := peer.connSendMessage(vmsg)
+		if err != nil {
+			return err
+		}
+	}
+	addReqMsg := &message.AddrReq{}
+	go peer.connSendMessage(addReqMsg)
 	return nil
 }
 
 // message receive handler
 func (peer *Peer) recvHandler() {
+	reader := bufio.NewReaderSize(peer.conn, MAX_BUF_LEN)
 	for {
 		// read new message from connection
-		msg, err := peer.connReadMessage()
+		msg, err := message.ReadMessage(reader)
 		if err != nil {
 			log.Error("[p2p]error read from %s, as: %v", peer.GetAddr().ToString(), err)
 			peer.disconnectNotify(err)
@@ -190,21 +195,23 @@ func (peer *Peer) recvHandler() {
 		}
 		switch msg.(type) {
 		case *message.Version:
-			reject := &message.RejectMsg{
-				Reason: "duplicate version message",
-			}
-			peer.internalSendMessage(reject, nil, nil)
-			peer.disconnectNotify(fmt.Errorf("received duplicate version message"))
-			return
-		case *message.VersionAck:
-			if peer.GetStatus() != ESTABLISH {
-				peer.setStatus(ESTABLISH)
-			} else {
+			err := peer.handleVersionMsg(msg.(*message.Version))
+			if err != nil {
 				reject := &message.RejectMsg{
-					Reason: "duplicate version ack message",
+					Reason: fmt.Sprintf("error: %v", err),
 				}
-				peer.internalSendMessage(reject, nil, nil)
-				peer.disconnectNotify(fmt.Errorf("received duplicate version ack message"))
+				peer.connSendMessage(reject)
+				peer.disconnectNotify(err)
+				return
+			}
+		case *message.VersionAck:
+			err := peer.handleVersionAckMsg(msg.(*message.VersionAck))
+			if err != nil {
+				reject := &message.RejectMsg{
+					Reason: fmt.Sprintf("error: %v", err),
+				}
+				peer.connSendMessage(reject)
+				peer.disconnectNotify(err)
 				return
 			}
 		case *message.RejectMsg:
@@ -212,6 +219,17 @@ func (peer *Peer) recvHandler() {
 			log.Error("receive a reject message from remote, reject reason: %s", rejectMsg.Reason)
 			peer.disconnectNotify(errors.New(rejectMsg.Reason))
 		default:
+			peerStatus := peer.GetStatus()
+			if peerStatus != ESTABLISH {
+				err := fmt.Errorf("peer %s cannot receive %v type message in %v status", peer.GetAddr().ToString(), msg.MsgType(), peerStatus)
+				log.Error("peer %s cannot receive %v type message in [%v] status", peer.GetAddr().ToString(), msg.MsgType(), peerStatus)
+				reject := &message.RejectMsg{
+					Reason: fmt.Sprintf("error: %v", err),
+				}
+				peer.connSendMessage(reject)
+				peer.disconnectNotify(err)
+				return
+			}
 			imsg := &internalMsg{
 				peer.addr,
 				nil,
@@ -236,7 +254,11 @@ func (peer *Peer) sendHandler() {
 		case msg := <-peer.sendChan:
 			err := peer.connSendMessage(msg.payload)
 			if msg.respTo != nil {
-				msg.respTo <- err
+				if err != nil {
+					msg.respTo <- err
+				} else {
+					msg.respTo <- nilError
+				}
 			}
 			if err != nil {
 				peer.disconnectNotify(err)
@@ -263,17 +285,6 @@ func (peer *Peer) connSendMessage(msg message.Message) error {
 		return err
 	}
 	return nil
-}
-
-// send message internally
-func (peer *Peer) internalSendMessage(msg message.Message, to *common.NetAddress, respTo chan interface{}) {
-	imsg := &internalMsg{
-		peer.addr,
-		nil,
-		msg,
-		respTo,
-	}
-	peer.sendChan <- imsg
 }
 
 // IsPersistent return true if this peer is a persistent peer
@@ -304,16 +315,9 @@ func (peer *Peer) Channel() chan<- *internalMsg {
 
 // GetStatus get peer's status
 func (peer *Peer) GetStatus() PeerStatus {
-	peer.lock.Lock()
-	defer peer.lock.Unlock()
+	peer.lock.RLock()
+	defer peer.lock.RUnlock()
 	return peer.status
-}
-
-// set peer's status
-func (peer *Peer) setStatus(status PeerStatus) {
-	peer.lock.Lock()
-	defer peer.lock.Unlock()
-	peer.status = status
 }
 
 // SetState update peer's state
@@ -332,7 +336,7 @@ func (peer *Peer) GetState() uint64 {
 
 //disconnectNotify push disconnect msg to channel
 func (peer *Peer) disconnectNotify(err error) {
-	log.Debug("[p2p]call disconnectNotify for %s", peer.GetAddr())
+	log.Debug("[p2p]call disconnectNotify for %s, as: %v", peer.GetAddr(), err)
 	disconnectMsg := &peerDisconnecMsg{
 		err,
 	}

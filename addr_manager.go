@@ -2,10 +2,10 @@ package p2p
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/DSiSc/craft/log"
 	"github.com/DSiSc/p2p/common"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"math/rand"
 	"os"

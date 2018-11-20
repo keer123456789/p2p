@@ -15,20 +15,24 @@ import (
 )
 
 const (
-	service_VERSION             = 1
 	persistentPeerRetryInterval = time.Minute
 	stallTickInterval           = 15 * time.Second
 	stallResponseTimeout        = 30 * time.Second
 	heartBeatInterval           = 10 * time.Second
 )
 
+// PeerFilter used to filter the peer satisfy the request
+type PeerFilter func(peerState uint64) bool
+
 // P2P is p2p service implementation.
 type P2P struct {
 	config        *config.P2PConfig
 	listener      net.Listener // net listener
-	msgChan       chan *internalMsg
+	internalChan  chan *internalMsg
+	msgChan       chan message.Message
 	stallChan     chan *internalMsg
 	quitChan      chan struct{}
+	isRunning     int32
 	addrManager   *AddressManager
 	state         uint64 // service's state
 	outbountPeers map[string]*Peer
@@ -42,9 +46,11 @@ func NewP2P(config *config.P2PConfig) (*P2P, error) {
 	return &P2P{
 		config:        config,
 		addrManager:   addrManger,
-		msgChan:       make(chan *internalMsg),
+		msgChan:       make(chan message.Message),
+		internalChan:  make(chan *internalMsg),
 		stallChan:     make(chan *internalMsg),
 		quitChan:      make(chan struct{}),
+		isRunning:     0,
 		outbountPeers: make(map[string]*Peer),
 		inboundPeers:  make(map[string]*Peer),
 	}, nil
@@ -52,6 +58,13 @@ func NewP2P(config *config.P2PConfig) (*P2P, error) {
 
 // Start start p2p service
 func (service *P2P) Start() error {
+	service.lock.Lock()
+	defer service.lock.Unlock()
+	log.Info("Begin starting p2p")
+	if service.isRunning != 0 {
+		log.Error("P2P already started")
+		return fmt.Errorf("P2P already started")
+	}
 	service.addrManager.Start()
 
 	netAddr, err := common.ParseNetAddress(service.config.ListenAddress)
@@ -74,19 +87,35 @@ func (service *P2P) Start() error {
 	go service.addressHandler()      // request address from neighbor peers
 	go service.heartBeatHandler()    // start heartbeat handler
 
+	service.isRunning = 1
 	return nil
 }
 
 // Stop stop p2p service
 func (service *P2P) Stop() {
-	peers := service.GetPeers()
-	for _, peer := range peers {
-		service.stopPeer(peer.addr)
+	service.lock.Lock()
+	if service.isRunning != 1 {
+		log.Error("p2p already stopped")
 	}
+
+	// stop all peer.
+	for _, peer := range service.outbountPeers {
+		peer.Stop()
+		delete(service.outbountPeers, peer.GetAddr().ToString())
+	}
+	for _, peer := range service.inboundPeers {
+		peer.Stop()
+		delete(service.outbountPeers, peer.GetAddr().ToString())
+	}
+
 	close(service.quitChan)
 	service.addrManager.Stop()
-	service.listener.Close()
+	if service.listener != nil {
+		service.listener.Close()
+	}
 
+	service.isRunning = 0
+	service.lock.Unlock()
 }
 
 // recvHandler listen to accept connection from inbound peer.
@@ -116,7 +145,7 @@ func (service *P2P) startListen(listener net.Listener) {
 		}
 
 		// add to inbound peer and start the handshake.
-		peer := NewInboundPeer(addr, service.msgChan, conn)
+		peer := NewInboundPeer(addr, service.internalChan, conn)
 		err = service.addInBoundPeer(peer)
 		if err != nil {
 			log.Error("failed to add peer to inbound peer list, as: %v", err)
@@ -241,7 +270,7 @@ func (service *P2P) connectPersistentPeers() {
 			}
 
 			service.addrManager.AddAddress(netAddr) //record address
-			peer := NewOutboundPeer(netAddr, true, service.msgChan)
+			peer := NewOutboundPeer(netAddr, true, service.internalChan)
 			err = service.addOutBoundPeer(peer)
 			if err != nil {
 				log.Error("failed to add peer %s to outbound list, as: %v", peer.GetAddr().ToString(), err)
@@ -274,7 +303,7 @@ func (service *P2P) connectNormalPeers() {
 			if service.containsPeer(addr) {
 				continue
 			}
-			peer := NewOutboundPeer(addr, false, service.msgChan)
+			peer := NewOutboundPeer(addr, false, service.internalChan)
 			err = service.addOutBoundPeer(peer)
 			if err != nil {
 				log.Error("failed to add peer %s to outbound list, as: %v", peer.GetAddr().ToString(), err)
@@ -355,7 +384,7 @@ func (service *P2P) addressHandler() {
 func (service *P2P) recvHandler() {
 	for {
 		select {
-		case msg := <-service.msgChan:
+		case msg := <-service.internalChan:
 			service.stallChan <- msg
 			switch msg.payload.(type) {
 			case *peerDisconnecMsg:
@@ -370,7 +399,7 @@ func (service *P2P) recvHandler() {
 				peer := service.GetPeerByAddress(msg.from)
 				peer.SetState(msg.payload.(*message.PongMsg).State)
 			default:
-				//TODO receive a normal message
+				service.msgChan <- msg.payload
 			}
 		case <-service.quitChan:
 			return
@@ -405,6 +434,12 @@ func (service *P2P) BroadCast(msg message.Message) {
 	for _, peer := range service.inboundPeers {
 		go service.sendMsg(peer, msg)
 	}
+}
+
+// MessageChan get p2p's message channel, (Messages sent to the server will eventually be placed in the message channel)
+func (service *P2P) MessageChan() <-chan message.Message {
+	log.Debug("get p2p's message chan")
+	return service.msgChan
 }
 
 // sendMsg send message to a peer.

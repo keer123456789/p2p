@@ -1,8 +1,8 @@
 package p2p
 
 import (
+	"errors"
 	"github.com/DSiSc/p2p/common"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"os"
 	"strconv"
@@ -126,7 +126,7 @@ func TestAddressManager_Stop(t *testing.T) {
 	select {
 	case <-addrManger.quitChan:
 	default:
-		assert.Error(errors.New("Failed to stop address manager"))
+		assert.Nil(errors.New("Failed to stop address manager"))
 	}
 }
 

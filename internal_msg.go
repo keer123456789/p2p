@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	internalMsgRespSuccess = iota
+	nilError = iota
 )
 
 // internal message type

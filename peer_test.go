@@ -1,14 +1,15 @@
 package p2p
 
 import (
+	"errors"
+	"github.com/DSiSc/craft/log"
 	"github.com/DSiSc/monkey"
 	"github.com/DSiSc/p2p/common"
 	"github.com/DSiSc/p2p/message"
 	"github.com/DSiSc/p2p/version"
-	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"net"
-	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
@@ -40,21 +41,28 @@ func TestNewOutboundPeer(t *testing.T) {
 }
 
 func TestPeer_Start(t *testing.T) {
+	defer monkey.UnpatchAll()
+
 	assert := assert.New(t)
-	netConn := newTestConn()
-	// mock connection read message
-	monkey.PatchInstanceMethod(reflect.TypeOf(netConn), "Read", func(conn *testConn, b []byte) (n int, err error) {
-		msg := <-conn.internalChan
-		copy(b, msg[:])
-		return len(msg), nil
-	})
+
 	// mock version message
 	msgByte, _ := message.EncodeMessage(&message.Version{
 		Version: version.Version,
 	})
-	go func() {
-		netConn.internalChan <- msgByte
-	}()
+	connBytes := msgByte
+
+	// mock version ack
+	msgByte, _ = message.EncodeMessage(&message.VersionAck{
+		Version: version.Version,
+	})
+	connBytes = append(connBytes, msgByte...)
+
+	// mock address message
+	msgByte, _ = message.EncodeMessage(&message.Addr{
+		NetAddresses: make([]*common.NetAddress, 0),
+	})
+
+	netConn := newTestConn(connBytes)
 
 	// start inbound peer
 	msgChan := make(chan *internalMsg)
@@ -63,36 +71,48 @@ func TestPeer_Start(t *testing.T) {
 	err := peer.Start()
 	assert.Nil(err)
 
+	timer := time.NewTicker(2 * time.Second)
+	select {
+	case <-msgChan:
+	case <-timer.C:
+		assert.Nil(errors.New("failed to receive heart beat message"))
+	}
+
 	// test stop peer
 	peer.Stop()
+	assert.Equal(STOPPED, peer.GetStatus())
 	select {
 	case <-peer.quitChan:
 	default:
-		assert.Error(errors.New("failed to stop peer"))
+		assert.Nil(errors.New("failed to stop peer"))
 	}
 }
 
 func TestPeer_Start1(t *testing.T) {
+	defer monkey.UnpatchAll()
 	assert := assert.New(t)
-	netConn := newTestConn()
-	// mock connection read message
-	monkey.PatchInstanceMethod(reflect.TypeOf(netConn), "Read", func(conn *testConn, b []byte) (n int, err error) {
-		msg := <-conn.internalChan
-		copy(b, msg[:])
-		return len(msg), nil
-	})
-	// mock dial to remote server
-	monkey.Patch(net.Dial, func(network, address string) (net.Conn, error) {
-		return netConn, nil
-	})
-
 	// mock version message
 	msgByte, _ := message.EncodeMessage(&message.Version{
 		Version: version.Version,
 	})
-	go func() {
-		netConn.internalChan <- msgByte
-	}()
+	connBytes := msgByte
+
+	// mock version ack
+	msgByte, _ = message.EncodeMessage(&message.VersionAck{
+		Version: version.Version,
+	})
+	connBytes = append(connBytes, msgByte...)
+
+	// mock address message
+	msgByte, _ = message.EncodeMessage(&message.Addr{
+		NetAddresses: make([]*common.NetAddress, 0),
+	})
+	netConn := newTestConn(connBytes)
+
+	// mock dial to remote server
+	monkey.Patch(net.Dial, func(network, address string) (net.Conn, error) {
+		return netConn, nil
+	})
 
 	// start outbound peer
 	msgChan := make(chan *internalMsg)
@@ -101,12 +121,20 @@ func TestPeer_Start1(t *testing.T) {
 	err := peer.Start()
 	assert.Nil(err)
 
+	timer := time.NewTicker(5 * time.Second)
+	select {
+	case <-msgChan:
+	case <-timer.C:
+		assert.Nil(errors.New("failed to receive heart beat message"))
+	}
+
 	// test stop peer
 	peer.Stop()
+	assert.Equal(STOPPED, peer.GetStatus())
 	select {
 	case <-peer.quitChan:
 	default:
-		assert.Error(errors.New("failed to stop peer"))
+		assert.Nil(errors.New("failed to stop peer"))
 	}
 }
 
@@ -137,21 +165,25 @@ func TestPeer_CurrentState(t *testing.T) {
 
 func TestPeer_Channel(t *testing.T) {
 	assert := assert.New(t)
-	netConn := newTestConn()
-	// mock connection read message
-	monkey.PatchInstanceMethod(reflect.TypeOf(netConn), "Read", func(conn *testConn, b []byte) (n int, err error) {
-		msg := <-conn.internalChan
-		copy(b, msg[:])
-		return len(msg), nil
-	})
 
 	// mock version message
-	go func() {
-		msgByte, _ := message.EncodeMessage(&message.Version{
-			Version: version.Version,
-		})
-		netConn.internalChan <- msgByte
-	}()
+	msgByte, _ := message.EncodeMessage(&message.Version{
+		Version: version.Version,
+	})
+	connBytes := msgByte
+
+	// mock version ack
+	msgByte, _ = message.EncodeMessage(&message.VersionAck{
+		Version: version.Version,
+	})
+	connBytes = append(connBytes, msgByte...)
+
+	// mock address message
+	msgByte, _ = message.EncodeMessage(&message.Addr{
+		NetAddresses: make([]*common.NetAddress, 0),
+	})
+	connBytes = append(connBytes, msgByte...)
+	netConn := newTestConn(connBytes)
 
 	// start inbound peer
 	msgChan := make(chan *internalMsg)
@@ -160,7 +192,7 @@ func TestPeer_Channel(t *testing.T) {
 	err := peer.Start()
 	assert.Nil(err)
 
-	// send message to send channel
+	// send message
 	respChan := make(chan interface{})
 	sendMsg := &internalMsg{
 		from: nil,
@@ -170,33 +202,24 @@ func TestPeer_Channel(t *testing.T) {
 		},
 		respTo: respChan,
 	}
-	go func() {
-		peer.Channel() <- sendMsg
-	}()
-
-	// check send response
-	timer := time.NewTicker(time.Second)
+	peer.Channel() <- sendMsg
+	time.Sleep(time.Second)
 	select {
 	case err := <-respChan:
-		if err != nil {
-			assert.Error(err.(error))
+		if err != nilError {
+			assert.Nil(err)
 		}
-	case <-timer.C:
-		assert.Error(errors.New("Send time out"))
+	default:
+		assert.Nil(errors.New("failed to send message"))
 	}
 
-	// mock connection send message
-	connChan := make(chan interface{})
-	monkey.PatchInstanceMethod(reflect.TypeOf(netConn), "Write", func(conn *testConn, b []byte) (n int, err error) {
-		connChan <- "Success"
-		return len(b), nil
-	})
-	// check connection send result
+	// test stop peer
+	peer.Stop()
+	assert.Equal(STOPPED, peer.GetStatus())
 	select {
-	case result := <-connChan:
-		assert.Equal("Seccess", result)
-	case <-timer.C:
-		assert.Error(errors.New("failed to send message to connection"))
+	case <-peer.quitChan:
+	default:
+		assert.Nil(errors.New("failed to stop peer"))
 	}
 }
 
@@ -219,20 +242,42 @@ func TestPeer_SetState(t *testing.T) {
 }
 
 type testConn struct {
+	mockMsg      []byte
 	internalChan chan []byte
+	lock         sync.RWMutex
 }
 
-func newTestConn() *testConn {
+func newTestConn(msgs []byte) *testConn {
 	return &testConn{
+		mockMsg:      msgs,
 		internalChan: make(chan []byte),
 	}
 }
 
 func (this *testConn) Read(b []byte) (n int, err error) {
-	return 0, nil
+	time.Sleep(100 * time.Millisecond)
+	this.lock.Lock()
+	if len(this.mockMsg) == 0 {
+		msgByte, _ := message.EncodeMessage(&message.PongMsg{
+			State: 1,
+		})
+		this.mockMsg = msgByte
+	}
+	if len(b) >= len(this.mockMsg) {
+		n = len(this.mockMsg)
+		copy(b, this.mockMsg[:])
+		this.mockMsg = make([]byte, 0)
+	} else {
+		n = len(b)
+		copy(b, this.mockMsg[:n])
+		this.mockMsg = this.mockMsg[n+1:]
+	}
+	this.lock.Unlock()
+	return
 }
 
 func (this *testConn) Write(b []byte) (n int, err error) {
+	log.Info("Connection write")
 	return 0, nil
 }
 

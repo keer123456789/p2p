@@ -143,10 +143,6 @@ func TestP2P_SendMsg(t *testing.T) {
 	conf.PersistentPeers = "tcp://192.168.1.1:8080"
 	p2p, err := NewP2P(conf)
 	assert.Nil(err)
-	msg := &message.PingMsg{
-		State: 1,
-	}
-
 	//mock peer
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
 	mockPeer := mockPeer(addr, true, false, p2p.internalChan, nil)
@@ -171,10 +167,11 @@ OUT:
 				break OUT
 			}
 		case <-timeoutTricker.C:
-			assert.Error(errors.New("failed to connect persistent peer"))
+			assert.Nil(errors.New("failed to connect persistent peer"))
 			break OUT
 		}
 	}
+	msg := &message.BlockReq{}
 	peer := p2p.GetPeers()[0]
 	go func() {
 		err := p2p.sendMsg(peer, msg)
@@ -186,13 +183,13 @@ OUT1:
 		select {
 		case pmsg := <-peer.sendChan:
 			switch pmsg.payload.(type) {
-			case *message.PingMsg:
+			case *message.BlockReq:
 				break OUT1
 			default:
 				continue
 			}
 		case <-timeoutTricker.C:
-			assert.Error(errors.New("read sent message failed"))
+			assert.Nil(errors.New("read sent message failed"))
 		}
 	}
 	p2p.Stop()
@@ -305,6 +302,63 @@ OUT:
 		}
 	}
 	assert.Equal(1, len(p2p.GetPeers()))
+}
+
+func TestP2P_Gather(t *testing.T) {
+	defer monkey.UnpatchAll()
+	assert := assert.New(t)
+	conf := mockConfig()
+	conf.PersistentPeers = "tcp://192.168.1.1:8080"
+	p2p, err := NewP2P(conf)
+	assert.Nil(err)
+
+	//mock peer
+	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
+	mockPeer := mockPeer(addr, true, false, p2p.internalChan, nil)
+	monkey.Patch(NewOutboundPeer, func(addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+		return mockPeer
+	})
+
+	// mock listen
+	monkey.Patch(net.Listen, func(network, address string) (net.Listener, error) {
+		return newTestListener(), nil
+	})
+	err = p2p.Start()
+	assert.Nil(err)
+
+	time.Sleep(time.Second)
+	if len(p2p.GetPeers()) <= 0 {
+		assert.Nil(errors.New("failed to connect persistent peer"))
+	}
+
+	// retrieve message from send channel
+	go func() {
+		for {
+			select {
+			case msg := <-p2p.GetPeers()[0].sendChan:
+				switch msg.payload.MsgType() {
+				case message.GET_BLOCKS_TYPE:
+					p2p.internalChan <- &internalMsg{
+						from:    mockPeer.GetAddr(),
+						payload: &message.Block{},
+					}
+				}
+			}
+		}
+	}()
+	p2p.Gather(func(peerState uint64) bool {
+		return true
+	}, &message.BlockReq{})
+	timer := time.NewTicker(time.Second)
+	select {
+	case msg := <-p2p.MessageChan():
+		if msg.MsgType() != message.BLOCK_TYPE {
+			assert.Nil(errors.New("failed to gather block from p2p"))
+		}
+	case <-timer.C:
+		assert.Nil(errors.New("failed to connect persistent peer"))
+	}
+	p2p.Stop()
 }
 
 type testListener struct {

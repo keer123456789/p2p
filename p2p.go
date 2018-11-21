@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"errors"
 	"fmt"
 	"github.com/DSiSc/craft/log"
 	"github.com/DSiSc/p2p/common"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -440,6 +442,30 @@ func (service *P2P) BroadCast(msg message.Message) {
 func (service *P2P) MessageChan() <-chan message.Message {
 	log.Debug("get p2p's message chan")
 	return service.msgChan
+}
+
+// Gather gather newest data from p2p network
+func (service *P2P) Gather(peerFilter PeerFilter, reqMsg message.Message) error {
+	if atomic.LoadInt32(&service.isRunning) != 1 {
+		log.Error("P2P have not been started yet")
+		return fmt.Errorf("P2P have not been started yet")
+	}
+	reqPeers := make([]*Peer, 0)
+	peers := service.GetPeers()
+	for _, peer := range peers {
+		if peerFilter(peer.GetState()) {
+			reqPeers = append(reqPeers, peer)
+		}
+	}
+
+	var err error
+	for _, peer := range reqPeers {
+		err = service.sendMsg(peer, reqMsg)
+		if err == nil {
+			return nil
+		}
+	}
+	return errors.New("no suitable peer")
 }
 
 // sendMsg send message to a peer.

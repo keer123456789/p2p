@@ -1,7 +1,6 @@
 package p2p
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"github.com/DSiSc/craft/log"
@@ -19,85 +18,188 @@ const (
 	WRITE_DEADLINE = 5          //deadline of conn write
 )
 
-// The peer state
-type PeerStatus int
-
-const (
-	INIT        = PeerStatus(iota) //initial
-	HAND                           //send verion to peer
-	HAND_SHAKE                     //haven`t send verion to peer and receive peer`s version
-	HAND_SHAKED                    //send verion to peer and receive peer`s version
-	ESTABLISH                      //receive peer`s verack
-	STOPPED
-)
-
 // Peer represent the peer
 type Peer struct {
-	version    uint32
-	outBound   bool
-	persistent bool
-	addr       *common.NetAddress
-	state      uint64   //current state of this peer
-	conn       net.Conn //connection to this peer
-	sendChan   chan *internalMsg
-	recvChan   chan<- *internalMsg
-	quitChan   chan interface{}
-	lock       sync.RWMutex
-	status     PeerStatus
+	version      uint32
+	outBound     bool
+	persistent   bool
+	serverAddr   *common.NetAddress
+	addr         *common.NetAddress
+	state        uint64    //current state of this peer
+	conn         *PeerConn //connection to this peer
+	internalChan chan message.Message
+	sendChan     chan *internalMsg
+	recvChan     chan<- *internalMsg
+	quitChan     chan interface{}
+	lock         sync.RWMutex
+	isRunning    bool
 }
 
 // NewInboundPeer new inbound peer instance
-func NewInboundPeer(addr *common.NetAddress, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
-	return newPeer(addr, false, false, msgChan, conn)
+func NewInboundPeer(serverAddr, addr *common.NetAddress, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
+	return newPeer(serverAddr, addr, false, false, msgChan, conn)
 }
 
 // NewInboundPeer new outbound peer instance
-func NewOutboundPeer(addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
-	return newPeer(addr, true, persistent, msgChan, nil)
+func NewOutboundPeer(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	return newPeer(serverAddr, addr, true, persistent, msgChan, nil)
 }
 
 // create a peer instance.
-func newPeer(addr *common.NetAddress, outBound, persistent bool, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
-	return &Peer{
-		addr:       addr,
-		outBound:   outBound,
-		persistent: persistent,
-		status:     INIT,
-		sendChan:   make(chan *internalMsg),
-		recvChan:   msgChan,
-		quitChan:   make(chan interface{}),
-		conn:       conn,
+func newPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
+	peer := &Peer{
+		serverAddr:   serverAddr,
+		addr:         addr,
+		outBound:     outBound,
+		persistent:   persistent,
+		internalChan: make(chan message.Message),
+		sendChan:     make(chan *internalMsg),
+		recvChan:     msgChan,
+		quitChan:     make(chan interface{}),
 	}
+	if !outBound && conn != nil {
+		peer.conn = NewPeerConn(conn, peer.internalChan)
+	}
+	return peer
 }
 
 // Start connect to peer and send message to each other
 func (peer *Peer) Start() error {
-	log.Info("Start peer %s", peer.GetAddr().ToString())
 	peer.lock.Lock()
 	defer peer.lock.Unlock()
-	if peer.status != INIT {
-		return errors.New("peer has been started")
+	if peer.isRunning {
+		log.Error("peer %s has been started", peer.addr.ToString())
+		return fmt.Errorf("peer %s has been started", peer.addr.ToString())
 	}
 
 	if peer.outBound {
+		log.Info("Start outbound peer %s", peer.addr.ToString())
 		err := peer.initConn()
 		if err != nil {
 			return err
 		}
-		err = peer.sendVersionMsg()
+		peer.conn.Start()
+		err = peer.handShakeWithOutBoundPeer()
 		if err != nil {
-			log.Error("failed to send version message")
+			peer.conn.Stop()
 			return err
 		}
-		peer.status = HAND
 	} else {
+		log.Info("Start inbound peer %s", peer.addr.ToString())
 		if peer.conn == nil {
 			return errors.New("have no established connection")
+		}
+		peer.conn.Start()
+		err := peer.handShakeWithInBoundPeer()
+		if err != nil {
+			peer.conn.Stop()
+			return err
 		}
 	}
 	go peer.recvHandler()
 	go peer.sendHandler()
 	return nil
+}
+
+// start handshake with outbound peer.
+func (peer *Peer) handShakeWithOutBoundPeer() error {
+	//send version message
+	err := peer.sendVersionMessage()
+	if err != nil {
+		return err
+	}
+
+	// read version message
+	err = peer.readVersionMessage()
+	if err != nil {
+		return err
+	}
+
+	// send version ack message
+	err = peer.sendVersionAckMessage()
+	if err != nil {
+		return err
+	}
+
+	// read version ack message
+	return peer.readVersionAckMessage()
+}
+
+// start handshake with inbound peer.
+func (peer *Peer) handShakeWithInBoundPeer() error {
+	// read version message
+	err := peer.readVersionMessage()
+	if err != nil {
+		return err
+	}
+
+	//send version message
+	err = peer.sendVersionMessage()
+	if err != nil {
+		return err
+	}
+
+	// read version ack message
+	err = peer.readVersionAckMessage()
+	if err != nil {
+		return err
+	}
+
+	// send version ack message
+	return peer.sendVersionAckMessage()
+}
+
+// send version message to this peer.
+func (peer *Peer) sendVersionMessage() error {
+	vmsg := &message.Version{
+		Version:    version.Version,
+		NetAddress: peer.serverAddr,
+	}
+	return peer.conn.SendMessage(vmsg)
+}
+
+// send version ack message to this peer.
+func (peer *Peer) sendVersionAckMessage() error {
+	vackmsg := &message.VersionAck{}
+	return peer.conn.SendMessage(vackmsg)
+}
+
+// read version message
+func (peer *Peer) readVersionMessage() error {
+	msg, err := peer.readMessageWithType(message.VERSION_TYPE)
+	if err != nil {
+		return err
+	}
+	vmsg := msg.(*message.Version)
+	peerAddr := common.NewNetAddress(vmsg.NetAddress.Protocol, peer.addr.IP, vmsg.NetAddress.Port)
+	peer.addr = peerAddr
+	return nil
+}
+
+// read version ack message
+func (peer *Peer) readVersionAckMessage() error {
+	_, err := peer.readMessageWithType(message.VERACK_TYPE)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// read specified type message from peer.
+func (peer *Peer) readMessageWithType(msgType message.MessageType) (message.Message, error) {
+	timer := time.NewTicker(5 * time.Second)
+	select {
+	case msg := <-peer.internalChan:
+		if msg.MsgType() == msgType {
+			return msg, nil
+		} else {
+			log.Error("error type message received from peer %s, expected: %v, actual: %v", peer.addr.ToString(), msgType, msg.MsgType())
+			return nil, fmt.Errorf("error type message received from peer %s, expected: %v, actual: %v", peer.addr.ToString(), msgType, msg.MsgType())
+		}
+	case <-timer.C:
+		log.Error("read %v type message from peer %s time out", msgType, peer.addr.ToString())
+		return nil, fmt.Errorf("read %v type message from peer %s time out", msgType, peer.addr.ToString())
+	}
 }
 
 // Stop stop peer.
@@ -107,144 +209,66 @@ func (peer *Peer) Stop() {
 	peer.lock.Lock()
 	defer peer.lock.Unlock()
 	if peer.conn != nil {
-		peer.conn.Close()
+		peer.conn.Stop()
 	}
 	close(peer.quitChan)
-	peer.status = STOPPED
+	peer.isRunning = false
 }
 
 // initConnection init the connection to peer.
 func (peer *Peer) initConn() error {
+	log.Debug("start init the connection to peer %s", peer.addr.ToString())
 	dialAddr := peer.addr.IP + ":" + strconv.Itoa(int(peer.addr.Port))
 	conn, err := net.Dial("tcp", dialAddr)
 	if err != nil {
-		log.Error("failed to dial to peer %s, as : %v", peer.GetAddr(), err)
-		return fmt.Errorf("failed to dial to peer %s, as : %v", peer.GetAddr().ToString(), err)
+		log.Error("failed to dial to peer %s, as : %v", peer.addr.ToString(), err)
+		return fmt.Errorf("failed to dial to peer %s, as : %v", peer.addr.ToString(), err)
 	}
-	peer.conn = conn
-	return nil
-}
-
-// send version message to remote
-func (peer *Peer) sendVersionMsg() error {
-	vmsg := &message.Version{
-		Version: version.Version,
-	}
-	err := peer.connSendMessage(vmsg)
-	if err != nil {
-		log.Error("failed to send version message")
-		return err
-	}
-	return nil
-}
-
-// read versin mesage from remote
-func (peer *Peer) handleVersionMsg(vmsg *message.Version) error {
-	peer.lock.Lock()
-	if peer.status != INIT && peer.status != HAND {
-		return fmt.Errorf("unknown status to received version,%d,%s\n", peer.status, peer.addr.ToString())
-	}
-	var msg message.Message
-	if peer.status == INIT {
-		peer.status = HAND_SHAKE
-		msg = &message.Version{
-			Version: version.Version,
-		}
-	} else {
-		peer.status = HAND_SHAKED
-		msg = &message.VersionAck{
-			Version: version.Version,
-		}
-	}
-	peer.lock.Unlock()
-	return peer.connSendMessage(msg)
-}
-
-// read versin mesage from remote
-func (peer *Peer) handleVersionAckMsg(vackmsg *message.VersionAck) error {
-	peer.lock.Lock()
-	defer peer.lock.Unlock()
-	if peer.status != HAND_SHAKE && peer.status != HAND_SHAKED {
-		return fmt.Errorf("unknown status to received verAck,state:%d,%s\n", peer.status, peer.addr.ToString())
-	}
-	peer.status = ESTABLISH
-	if peer.status == HAND_SHAKE {
-		vmsg := &message.VersionAck{
-			Version: version.Version,
-		}
-		err := peer.connSendMessage(vmsg)
-		if err != nil {
-			return err
-		}
-	}
-	addReqMsg := &message.AddrReq{}
-	go peer.connSendMessage(addReqMsg)
+	peer.conn = NewPeerConn(conn, peer.internalChan)
 	return nil
 }
 
 // message receive handler
 func (peer *Peer) recvHandler() {
-	reader := bufio.NewReaderSize(peer.conn, MAX_BUF_LEN)
 	for {
-		// read new message from connection
-		msg, err := message.ReadMessage(reader)
-		if err != nil {
-			log.Error("[p2p]error read from %s, as: %v", peer.GetAddr().ToString(), err)
-			peer.disconnectNotify(err)
+		var msg message.Message
+		select {
+		case msg = <-peer.internalChan:
+			log.Debug("receive %v type message from peer %s", msg.MsgType(), peer.GetAddr().ToString())
+		case <-peer.quitChan:
 			return
 		}
+
 		switch msg.(type) {
 		case *message.Version:
-			err := peer.handleVersionMsg(msg.(*message.Version))
-			if err != nil {
-				reject := &message.RejectMsg{
-					Reason: fmt.Sprintf("error: %v", err),
-				}
-				peer.connSendMessage(reject)
-				peer.disconnectNotify(err)
-				return
+			reject := &message.RejectMsg{
+				Reason: "invalid message, as version messages can only be sent once ",
 			}
+			peer.conn.SendMessage(reject)
+			peer.disconnectNotify(errors.New("receive an invalid message from remote"))
+			return
 		case *message.VersionAck:
-			err := peer.handleVersionAckMsg(msg.(*message.VersionAck))
-			if err != nil {
-				reject := &message.RejectMsg{
-					Reason: fmt.Sprintf("error: %v", err),
-				}
-				peer.connSendMessage(reject)
-				peer.disconnectNotify(err)
-				return
+			reject := &message.RejectMsg{
+				Reason: "invalid message, as version ack messages can only be sent once ",
 			}
+			peer.conn.SendMessage(reject)
+			peer.disconnectNotify(errors.New("receive an invalid message from remote"))
+			return
 		case *message.RejectMsg:
 			rejectMsg := msg.(*message.RejectMsg)
 			log.Error("receive a reject message from remote, reject reason: %s", rejectMsg.Reason)
 			peer.disconnectNotify(errors.New(rejectMsg.Reason))
+			return
 		default:
-			peerStatus := peer.GetStatus()
-			if peerStatus != ESTABLISH {
-				err := fmt.Errorf("peer %s cannot receive %v type message in %v status", peer.GetAddr().ToString(), msg.MsgType(), peerStatus)
-				log.Error("peer %s cannot receive %v type message in [%v] status", peer.GetAddr().ToString(), msg.MsgType(), peerStatus)
-				reject := &message.RejectMsg{
-					Reason: fmt.Sprintf("error: %v", err),
-				}
-				peer.connSendMessage(reject)
-				peer.disconnectNotify(err)
-				return
-			}
 			imsg := &internalMsg{
-				peer.addr,
-				nil,
-				msg,
-				nil,
+				from:    peer.addr,
+				to:      peer.serverAddr,
+				payload: msg,
 			}
 			peer.recvChan <- imsg
+			log.Debug("peer %s send %v type message to message channel", peer.GetAddr().ToString(), msg.MsgType())
 		}
 	}
-}
-
-// read message from connection
-func (peer *Peer) connReadMessage() (message.Message, error) {
-	reader := bufio.NewReaderSize(peer.conn, MAX_BUF_LEN)
-	return message.ReadMessage(reader)
 }
 
 // message send handler
@@ -252,7 +276,7 @@ func (peer *Peer) sendHandler() {
 	for {
 		select {
 		case msg := <-peer.sendChan:
-			err := peer.connSendMessage(msg.payload)
+			err := peer.conn.SendMessage(msg.payload)
 			if msg.respTo != nil {
 				if err != nil {
 					msg.respTo <- err
@@ -267,24 +291,6 @@ func (peer *Peer) sendHandler() {
 			return
 		}
 	}
-}
-
-// send message to connection.
-func (peer *Peer) connSendMessage(msg message.Message) error {
-	buf, err := message.EncodeMessage(msg)
-	if err != nil {
-		log.Error("failed to encode message %v, as %v", msg, err)
-		return err
-	}
-
-	nCount := len(buf)
-	peer.conn.SetWriteDeadline(time.Now().Add(time.Duration(nCount*WRITE_DEADLINE) * time.Second))
-	_, err = peer.conn.Write(buf)
-	if err != nil {
-		log.Error("failed to send raw message to remote, as: %v", err)
-		return err
-	}
-	return nil
 }
 
 // IsPersistent return true if this peer is a persistent peer
@@ -308,16 +314,9 @@ func (peer *Peer) CurrentState() uint64 {
 	return peer.state
 }
 
-// Channel get peer's input channel
+// Channel get peer's send channel
 func (peer *Peer) Channel() chan<- *internalMsg {
 	return peer.sendChan
-}
-
-// GetStatus get peer's status
-func (peer *Peer) GetStatus() PeerStatus {
-	peer.lock.RLock()
-	defer peer.lock.RUnlock()
-	return peer.status
 }
 
 // SetState update peer's state
@@ -336,15 +335,14 @@ func (peer *Peer) GetState() uint64 {
 
 //disconnectNotify push disconnect msg to channel
 func (peer *Peer) disconnectNotify(err error) {
-	log.Debug("[p2p]call disconnectNotify for %s, as: %v", peer.GetAddr(), err)
+	log.Debug("[p2p]call disconnectNotify for %s, as: %v", peer.GetAddr().ToString(), err)
 	disconnectMsg := &peerDisconnecMsg{
 		err,
 	}
 	msg := &internalMsg{
-		peer.addr,
-		nil,
-		disconnectMsg,
-		nil,
+		from:    peer.addr,
+		to:      peer.serverAddr,
+		payload: disconnectMsg,
 	}
 	peer.recvChan <- msg
 }

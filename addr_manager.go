@@ -17,6 +17,10 @@ const (
 	// addresses under which the address book will claim to need more addresses.
 	needAddressThreshold = 1000
 	syncInterval         = 2 * time.Minute
+	// getAddrMax is the most addresses that we will send in response
+	// to a getAddr (in practise the most addresses we will return from a
+	// call to AddressCache()).
+	getAddrMax = 2500
 )
 
 // AddressManager is used to manage neighbor's address
@@ -53,8 +57,27 @@ func (addrManager *AddressManager) OurAddress() *common.NetAddress {
 	return addrManager.outAddr
 }
 
+// AddAddresses add new addresses
+func (addrManager *AddressManager) AddAddresses(addrs []*common.NetAddress) {
+	log.Debug("add %d addresses to book", len(addrs))
+	addrManager.lock.Lock()
+	defer addrManager.lock.Unlock()
+	for _, addr := range addrs {
+		if addrManager.outAddr != nil && addrManager.outAddr.Equal(addr) {
+			continue
+		}
+
+		if addrManager.addresses[addr.ToString()] != nil {
+			continue
+		}
+		addrManager.addresses[addr.ToString()] = addr
+		addrManager.changed = true
+	}
+}
+
 // AddAddress add a new address
 func (addrManager *AddressManager) AddAddress(addr *common.NetAddress) {
+	log.Debug("add new address %s to book", addr.ToString())
 	addrManager.lock.Lock()
 	defer addrManager.lock.Unlock()
 	if addrManager.outAddr != nil && addrManager.outAddr.Equal(addr) {
@@ -78,18 +101,26 @@ func (addrManager *AddressManager) RemoveAddress(addr *common.NetAddress) {
 
 // GetAddress get a random address
 func (addrManager *AddressManager) GetAddress() (*common.NetAddress, error) {
-	addrManager.lock.RLock()
-	defer addrManager.lock.RUnlock()
-	if len(addrManager.addresses) > 0 {
-		index := rand.Intn(len(addrManager.addresses))
-		for _, addr := range addrManager.addresses {
-			if index <= 0 {
-				return addr, nil
-			}
-			index--
-		}
+	addrs := addrManager.GetAllAddress()
+	if len(addrs) > 0 {
+		index := rand.Intn(len(addrs))
+		return addrs[index], nil
 	}
 	return nil, errors.New("no address in address book")
+}
+
+// GetAddresses get a random address list to send to peer
+func (addrManager *AddressManager) GetAddresses() []*common.NetAddress {
+	addrs := addrManager.GetAllAddress()
+	if addrManager.GetAddressCount() <= getAddrMax {
+		return addrs
+	} else {
+		for i := 0; i < getAddrMax; i++ {
+			j := rand.Intn(getAddrMax-i) + i
+			addrs[i], addrs[j] = addrs[j], addrs[i]
+		}
+		return addrs[:getAddrMax]
+	}
 }
 
 // GetAddressCount get address count
@@ -195,6 +226,6 @@ func loadAddress(filePath string) map[string]*common.NetAddress {
 		}
 		addresses[addrStr] = addr
 	}
-
+	log.Debug("load %d addresses from file %s", len(addresses), filePath)
 	return addresses
 }

@@ -24,8 +24,8 @@ func mockConfig() *config.P2PConfig {
 	}
 }
 
-func mockPeer(addr *common.NetAddress, outBound, persistent bool, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
-	peer := newPeer(addr, outBound, persistent, msgChan, conn)
+func mockPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
+	peer := newPeer(serverAddr, addr, outBound, persistent, msgChan, conn)
 	monkey.PatchInstanceMethod(reflect.TypeOf(peer), "Start", func(peer *Peer) error {
 		return nil
 	})
@@ -91,9 +91,10 @@ func TestP2P_BroadCast(t *testing.T) {
 	}
 
 	//mock peer
+	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
-	peer := mockPeer(addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	peer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
 		return peer
 	})
 
@@ -144,9 +145,10 @@ func TestP2P_SendMsg(t *testing.T) {
 	p2p, err := NewP2P(conf)
 	assert.Nil(err)
 	//mock peer
+	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
-	mockPeer := mockPeer(addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	mockPeer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
 		return mockPeer
 	})
 
@@ -206,9 +208,10 @@ func TestP2P_GetOutBountPeersCount(t *testing.T) {
 	assert.Equal(0, p2p.GetOutBountPeersCount())
 
 	//mock peer
+	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
-	peer := mockPeer(addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	peer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
 		return peer
 	})
 
@@ -241,9 +244,10 @@ func TestP2P_GetPeerByAddress(t *testing.T) {
 	assert.Nil(err)
 
 	//mock peer
+	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
-	peer := mockPeer(addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	peer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
 		return peer
 	})
 
@@ -274,12 +278,13 @@ func TestP2P_GetPeers(t *testing.T) {
 	conf.PersistentPeers = "tcp://192.168.1.1:8080"
 	p2p, err := NewP2P(conf)
 	// mock peer
+	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
-	peer := mockPeer(addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewInboundPeer, func(addr *common.NetAddress, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
+	peer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
+	monkey.Patch(NewInboundPeer, func(serverAddr, addr *common.NetAddress, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
 		return peer
 	})
-	monkey.Patch(NewOutboundPeer, func(addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
 		return peer
 	})
 
@@ -313,9 +318,10 @@ func TestP2P_Gather(t *testing.T) {
 	assert.Nil(err)
 
 	//mock peer
+	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
-	mockPeer := mockPeer(addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	mockPeer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
 		return mockPeer
 	})
 

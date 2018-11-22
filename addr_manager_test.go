@@ -82,6 +82,61 @@ func TestAddressManager_AddAddress(t *testing.T) {
 	assert.True(exist)
 }
 
+func TestAddressManager_AddAddresses(t *testing.T) {
+	assert := assert.New(t)
+	addrManger := NewAddressManager(addressFile)
+	assert.NotNil(addrManger)
+
+	addrs := mockNetAddresses(3)
+	addrManger.AddAddresses(addrs)
+	assert.Equal(3, addrManger.GetAddressCount())
+}
+
+func TestAddressManager_GetAddress(t *testing.T) {
+	assert := assert.New(t)
+	addrManger := NewAddressManager(addressFile)
+	assert.NotNil(addrManger)
+
+	addrs := mockNetAddresses(3)
+	addrManger.AddAddresses(addrs)
+	assert.Equal(3, addrManger.GetAddressCount())
+
+	addr, err := addrManger.GetAddress()
+	assert.Nil(err)
+	assert.NotNil(addr)
+}
+
+func TestAddressManager_GetAddresses(t *testing.T) {
+	assert := assert.New(t)
+	addrManger := NewAddressManager(addressFile)
+	assert.NotNil(addrManger)
+
+	addrs := mockNetAddresses(3)
+	addrManger.AddAddresses(addrs)
+	assert.Equal(3, addrManger.GetAddressCount())
+
+	addrs = addrManger.GetAddresses()
+	assert.Equal(3, len(addrs))
+
+	addrs = mockNetAddresses(getAddrMax + 1)
+	addrManger.AddAddresses(addrs)
+	addrs = addrManger.GetAddresses()
+	assert.Equal(getAddrMax, len(addrs))
+}
+
+func TestAddressManager_GetAllAddress(t *testing.T) {
+	assert := assert.New(t)
+	addrManger := NewAddressManager(addressFile)
+	assert.NotNil(addrManger)
+
+	addrs := mockNetAddresses(3)
+	addrManger.AddAddresses(addrs)
+	assert.Equal(3, addrManger.GetAddressCount())
+
+	addrs1 := addrManger.GetAllAddress()
+	assert.Equal(3, len(addrs1))
+}
+
 func TestAddressManager_RemoveAddress(t *testing.T) {
 	assert := assert.New(t)
 	addrManger := NewAddressManager(addressFile)

@@ -1,8 +1,11 @@
 package message
 
+import "github.com/DSiSc/p2p/common"
+
 // Version version message
 type Version struct {
-	Version string `json:"version"`
+	Version    string             `json:"version"`
+	NetAddress *common.NetAddress `json:"net_address"`
 }
 
 func (this *Version) MsgType() MessageType {
@@ -15,7 +18,6 @@ func (this *Version) ResponseMsgType() MessageType {
 
 // Version ack message
 type VersionAck struct {
-	Version string `json:"version"`
 }
 
 func (this *VersionAck) MsgType() MessageType {

@@ -450,7 +450,7 @@ func (service *P2P) recvHandler() {
 				service.stopPeer(msg.from)
 			case *message.PingMsg:
 				pingMsg := &message.PongMsg{
-					State: service.getLocalState(),
+					State: LocalState(),
 				}
 				peer := service.GetPeerByAddress(msg.from)
 				service.sendMsg(peer, pingMsg)

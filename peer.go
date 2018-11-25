@@ -152,8 +152,8 @@ func (peer *Peer) handShakeWithInBoundPeer() error {
 // send version message to this peer.
 func (peer *Peer) sendVersionMessage() error {
 	vmsg := &message.Version{
-		Version:    version.Version,
-		NetAddress: peer.serverAddr,
+		Version: version.Version,
+		PortMe:  peer.serverAddr.Port,
 	}
 	return peer.conn.SendMessage(vmsg)
 }
@@ -170,9 +170,10 @@ func (peer *Peer) readVersionMessage() error {
 	if err != nil {
 		return err
 	}
-	vmsg := msg.(*message.Version)
-	peerAddr := common.NewNetAddress(vmsg.NetAddress.Protocol, peer.addr.IP, vmsg.NetAddress.Port)
-	peer.addr = peerAddr
+	if !peer.outBound {
+		vmsg := msg.(*message.Version)
+		peer.addr.Port = vmsg.PortMe
+	}
 	return nil
 }
 

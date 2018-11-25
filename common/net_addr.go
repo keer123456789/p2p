@@ -3,8 +3,13 @@ package common
 import (
 	"github.com/DSiSc/craft/log"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
+)
+
+const (
+	loopBackAddressPattern = "^tcp://127(\\.[0-9]){3}:[0-9]{1,}$"
 )
 
 // NetAddress network address
@@ -54,6 +59,15 @@ func ParseNetAddress(addrStr string) (*NetAddress, error) {
 }
 
 //ToString encode netaddress to string
-func (net *NetAddress) ToString() string {
-	return net.Protocol + "://" + net.IP + ":" + strconv.Itoa(int(net.Port))
+func (addr *NetAddress) ToString() string {
+	return addr.Protocol + "://" + addr.IP + ":" + strconv.Itoa(int(addr.Port))
+}
+
+// IsLoopback reports whether ip is a loopback address.
+func (addr *NetAddress) IsLoopback() bool {
+	matched, err := regexp.Match(loopBackAddressPattern, []byte(addr.ToString()))
+	if err != nil {
+		log.Warn("address %s match local address error %v", err)
+	}
+	return matched
 }

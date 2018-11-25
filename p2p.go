@@ -76,7 +76,13 @@ func (service *P2P) Start() error {
 		log.Error("invalid listen address")
 		return err
 	}
-	service.addrManager.AddOurAddress(netAddr)
+
+	err = service.addrManager.AddLocalAddress(netAddr.Port)
+	if err != nil {
+		log.Error("failed to add local address to address manager, as %v", err)
+		return err
+	}
+
 	listener, err := net.Listen(netAddr.Protocol, netAddr.IP+":"+strconv.Itoa(int(netAddr.Port)))
 	if err != nil {
 		log.Error("failed to create listener with address: %s, as: %v", netAddr.ToString(), err)
@@ -148,7 +154,8 @@ func (service *P2P) startListen(listener net.Listener) {
 		}
 
 		// init an inbound peer
-		peer := NewInboundPeer(service.addrManager.OurAddress(), addr, service.internalChan, conn)
+		peer := NewInboundPeer(service.addrManager.OurAddresses()[0], addr, service.internalChan, conn)
+		//peer := NewInboundPeer(service.addrManager.OurAddresses(), addr, service.internalChan, conn)
 		err = service.addPendingPeer(peer)
 		if err != nil {
 			conn.Close()
@@ -262,7 +269,7 @@ func (service *P2P) isOutMsg(msg *internalMsg) bool {
 	if msg.from == nil {
 		return false
 	}
-	return service.addrManager.OurAddress().Equal(msg.from)
+	return service.addrManager.IsOurAddress(msg.from)
 }
 
 // add a message to pending response queue
@@ -298,12 +305,12 @@ func (service *P2P) connectPersistentPeers() {
 				log.Warn("invalid persistent peer address")
 				continue
 			}
-			if service.addrManager.OurAddress().Equal(netAddr) {
+			if service.addrManager.IsOurAddress(netAddr) {
 				continue
 			}
 
 			service.addrManager.AddAddress(netAddr) //record address
-			peer := NewOutboundPeer(service.addrManager.OurAddress(), netAddr, true, service.internalChan)
+			peer := NewOutboundPeer(service.addrManager.OurAddresses()[0], netAddr, true, service.internalChan)
 			go service.connectPeer(peer)
 		}
 	}
@@ -327,7 +334,7 @@ func (service *P2P) connectNormalPeers() {
 					continue
 				}
 				log.Info("start connecting to peer %s", addr.ToString())
-				peer := NewOutboundPeer(service.addrManager.OurAddress(), addr, false, service.internalChan)
+				peer := NewOutboundPeer(service.addrManager.OurAddresses()[0], addr, false, service.internalChan)
 				go service.connectPeer(peer)
 			}
 		} else {
@@ -344,7 +351,7 @@ func (service *P2P) connectNormalPeers() {
 					continue
 				}
 				log.Info("start connecting to peer %s", addr.ToString())
-				peer := NewOutboundPeer(service.addrManager.OurAddress(), addr, false, service.internalChan)
+				peer := NewOutboundPeer(service.addrManager.OurAddresses()[0], addr, false, service.internalChan)
 				go service.connectPeer(peer)
 			}
 		}
@@ -531,7 +538,7 @@ func (service *P2P) Gather(peerFilter PeerFilter, reqMsg message.Message) error 
 // sendMsg send message to a peer.
 func (service *P2P) sendMsg(peer *Peer, msg message.Message) error {
 	message := &internalMsg{
-		service.addrManager.OurAddress(),
+		service.addrManager.OurAddresses()[0],
 		peer.addr,
 		msg,
 		nil,

@@ -8,7 +8,9 @@ import (
 	"github.com/DSiSc/p2p/common"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -26,7 +28,7 @@ const (
 // AddressManager is used to manage neighbor's address
 type AddressManager struct {
 	filePath  string
-	outAddr   *common.NetAddress
+	ourAddrs  map[string]*common.NetAddress
 	addresses map[string]*common.NetAddress
 	lock      sync.RWMutex
 	changed   bool
@@ -38,6 +40,7 @@ func NewAddressManager(filePath string) *AddressManager {
 	addresses := loadAddress(filePath)
 	return &AddressManager{
 		filePath:  filePath,
+		ourAddrs:  make(map[string]*common.NetAddress),
 		addresses: addresses,
 		quitChan:  make(chan interface{}),
 	}
@@ -47,14 +50,48 @@ func NewAddressManager(filePath string) *AddressManager {
 func (addrManager *AddressManager) AddOurAddress(addr *common.NetAddress) {
 	addrManager.lock.Lock()
 	defer addrManager.lock.Unlock()
-	addrManager.outAddr = addr
+	if addrManager.ourAddrs[addr.ToString()] != nil {
+		return
+	}
+	addrManager.ourAddrs[addr.ToString()] = addr
 }
 
-// OurAddress get local address.
-func (addrManager *AddressManager) OurAddress() *common.NetAddress {
+// AddOurAddress add our local address.
+func (addrManager *AddressManager) AddLocalAddress(port int32) error {
+	addrManager.lock.Lock()
+	defer addrManager.lock.Unlock()
+	localIps, err := getLocalAddresses()
+	if err != nil {
+		return fmt.Errorf("failed to add our local address to address manager as:%v", err)
+	}
+	for _, localIp := range localIps {
+		netAddr, err := common.ParseNetAddress(localIp + ":" + strconv.Itoa(int(port)))
+		if err != nil {
+			continue
+		}
+		if addrManager.ourAddrs[netAddr.ToString()] == nil {
+			addrManager.ourAddrs[netAddr.ToString()] = netAddr
+		}
+	}
+	return nil
+}
+
+// OurAddresses get local address.
+func (addrManager *AddressManager) OurAddresses() []*common.NetAddress {
 	addrManager.lock.RLock()
 	defer addrManager.lock.RUnlock()
-	return addrManager.outAddr
+	addrs := make([]*common.NetAddress, 0)
+	for _, addr := range addrManager.ourAddrs {
+		addrs = append(addrs, addr)
+	}
+	return addrs
+}
+
+// IsOurAddress check whether the address is our address
+func (addrManager *AddressManager) IsOurAddress(addr *common.NetAddress) bool {
+	addrManager.lock.RLock()
+	defer addrManager.lock.RUnlock()
+	return addrManager.ourAddrs[addr.ToString()] != nil
 }
 
 // AddAddresses add new addresses
@@ -63,7 +100,7 @@ func (addrManager *AddressManager) AddAddresses(addrs []*common.NetAddress) {
 	addrManager.lock.Lock()
 	defer addrManager.lock.Unlock()
 	for _, addr := range addrs {
-		if addrManager.outAddr != nil && addrManager.outAddr.Equal(addr) {
+		if addrManager.ourAddrs[addr.ToString()] != nil {
 			continue
 		}
 
@@ -80,7 +117,7 @@ func (addrManager *AddressManager) AddAddress(addr *common.NetAddress) {
 	log.Debug("add new address %s to book", addr.ToString())
 	addrManager.lock.Lock()
 	defer addrManager.lock.Unlock()
-	if addrManager.outAddr != nil && addrManager.outAddr.Equal(addr) {
+	if addrManager.ourAddrs[addr.ToString()] != nil {
 		return
 	}
 
@@ -228,4 +265,38 @@ func loadAddress(filePath string) map[string]*common.NetAddress {
 	}
 	log.Debug("load %d addresses from file %s", len(addresses), filePath)
 	return addresses
+}
+
+// get all address of our server
+func getLocalAddresses() ([]string, error) {
+	ips := make([]string, 0)
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		log.Error("failed to get system's interfaces")
+		return nil, errors.New("failed to get system's interfaces")
+	}
+	for _, i := range ifaces {
+		addrs, err := i.Addrs()
+		if err != nil {
+			log.Warn("failed to get interface's address")
+			continue
+		}
+		// handle err
+		for _, addr := range addrs {
+
+			var ip net.IP
+			switch v := addr.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip.To4() == nil || ip.IsLoopback() {
+				log.Warn("skip invalid address %s", ip)
+				continue
+			}
+			ips = append(ips, ip.String())
+		}
+	}
+	return ips, nil
 }

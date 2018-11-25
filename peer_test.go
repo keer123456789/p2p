@@ -2,7 +2,6 @@ package p2p
 
 import (
 	"errors"
-	"fmt"
 	"github.com/DSiSc/monkey"
 	"github.com/DSiSc/p2p/common"
 	"github.com/DSiSc/p2p/message"
@@ -64,8 +63,8 @@ func TestPeer_Start(t *testing.T) {
 
 	msgs := []message.Message{
 		&message.Version{
-			Version:    version.Version,
-			NetAddress: mockAddress(),
+			Version: version.Version,
+			PortMe:  mockAddress().Port,
 		},
 		&message.VersionAck{},
 		&message.Addr{
@@ -109,10 +108,11 @@ func TestPeer_Start1(t *testing.T) {
 
 	assert := assert.New(t)
 
+	serverAddr := mockServerAddress()
 	msgs := []message.Message{
 		&message.Version{
-			Version:    version.Version,
-			NetAddress: mockAddress(),
+			Version: version.Version,
+			PortMe:  mockAddress().Port,
 		},
 		&message.VersionAck{},
 		&message.Addr{
@@ -124,7 +124,7 @@ func TestPeer_Start1(t *testing.T) {
 	monkey.Patch(NewPeerConn, func(conn net.Conn, recvChan chan message.Message) *PeerConn { return peerConn })
 	// start outbound peer
 	msgChan := make(chan *internalMsg)
-	peer := NewOutboundPeer(mockServerAddress(), mockAddress(), false, msgChan)
+	peer := NewOutboundPeer(serverAddr, mockAddress(), false, msgChan)
 
 	// mock receive message from peerConn
 	go func(msgs []message.Message) {
@@ -184,8 +184,8 @@ func TestPeer_Channel(t *testing.T) {
 	assert := assert.New(t)
 	msgs := []message.Message{
 		&message.Version{
-			Version:    version.Version,
-			NetAddress: mockAddress(),
+			Version: version.Version,
+			PortMe:  mockAddress().Port,
 		},
 		&message.VersionAck{},
 		&message.Addr{
@@ -258,12 +258,18 @@ func newTestConn() *testConn {
 }
 
 func (this *testConn) Read(b []byte) (n int, err error) {
-	fmt.Println("Read")
+	doNothing := true
+	if doNothing {
+		//TODO
+	}
 	return 0, nil
 }
 
 func (this *testConn) Write(b []byte) (n int, err error) {
-	fmt.Println("Write")
+	doNothing := true
+	if doNothing {
+		//TODO
+	}
 	return 0, nil
 }
 
@@ -276,7 +282,10 @@ func (this *testConn) LocalAddr() net.Addr {
 }
 
 func (this *testConn) RemoteAddr() net.Addr {
-	fmt.Println("RemoteAddr")
+	doNothing := true
+	if doNothing {
+		//TODO
+	}
 	return nil
 }
 

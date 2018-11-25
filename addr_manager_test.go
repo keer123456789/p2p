@@ -53,11 +53,11 @@ func TestAddressManager_AddOurAddress(t *testing.T) {
 	assert.NotNil(addrManger)
 	address := &common.NetAddress{
 		Protocol: "tcp",
-		IP:       "127.0.0.1",
+		IP:       "192.168.1.2",
 		Port:     8080,
 	}
 	addrManger.AddOurAddress(address)
-	assert.Equal(address, addrManger.OurAddress())
+	assert.Equal(address, addrManger.OurAddresses()[0])
 }
 
 func TestAddressManager_AddAddress(t *testing.T) {

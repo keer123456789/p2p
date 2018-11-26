@@ -9,6 +9,10 @@ type BlockHeaderReq struct {
 	HashStop  types.Hash `json:"hash_stop"`
 }
 
+func (this *BlockHeaderReq) MsgId() types.Hash {
+	return EmptyHash
+}
+
 func (this *BlockHeaderReq) MsgType() MessageType {
 	return GET_HEADERS_TYPE
 }
@@ -20,6 +24,10 @@ func (this *BlockHeaderReq) ResponseMsgType() MessageType {
 // BlockHeaders block header message
 type BlockHeaders struct {
 	Headers []*types.Header `json:"headers"`
+}
+
+func (this *BlockHeaders) MsgId() types.Hash {
+	return EmptyHash
 }
 
 func (this *BlockHeaders) MsgType() MessageType {

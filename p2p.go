@@ -497,11 +497,15 @@ func (service *P2P) BroadCast(msg message.Message) {
 	service.lock.RLock()
 	defer service.lock.RUnlock()
 	for _, peer := range service.outbountPeers {
-		go service.sendMsg(peer, msg)
+		if !peer.KnownMsg(msg) {
+			go service.sendMsg(peer, msg)
+		}
 	}
 
 	for _, peer := range service.inboundPeers {
-		go service.sendMsg(peer, msg)
+		if !peer.KnownMsg(msg) {
+			go service.sendMsg(peer, msg)
+		}
 	}
 }
 

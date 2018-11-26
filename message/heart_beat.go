@@ -1,8 +1,14 @@
 package message
 
+import "github.com/DSiSc/craft/types"
+
 // PingMsg ping message
 type PingMsg struct {
 	State uint64
+}
+
+func (this *PingMsg) MsgId() types.Hash {
+	return EmptyHash
 }
 
 func (this *PingMsg) MsgType() MessageType {
@@ -16,6 +22,10 @@ func (this *PingMsg) ResponseMsgType() MessageType {
 // PongMsg pong message
 type PongMsg struct {
 	State uint64
+}
+
+func (this *PongMsg) MsgId() types.Hash {
+	return EmptyHash
 }
 
 func (this *PongMsg) MsgType() MessageType {

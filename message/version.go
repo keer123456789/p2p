@@ -1,9 +1,15 @@
 package message
 
+import "github.com/DSiSc/craft/types"
+
 // Version version message
 type Version struct {
 	Version string `json:"version"`
 	PortMe  int32  `json:"port_me"`
+}
+
+func (this *Version) MsgId() types.Hash {
+	return EmptyHash
 }
 
 func (this *Version) MsgType() MessageType {
@@ -16,6 +22,10 @@ func (this *Version) ResponseMsgType() MessageType {
 
 // Version ack message
 type VersionAck struct {
+}
+
+func (this *VersionAck) MsgId() types.Hash {
+	return EmptyHash
 }
 
 func (this *VersionAck) MsgType() MessageType {

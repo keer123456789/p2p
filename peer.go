@@ -16,6 +16,7 @@ import (
 const (
 	MAX_BUF_LEN    = 1024 * 256 //the maximum buffer To receive message
 	WRITE_DEADLINE = 5          //deadline of conn write
+
 )
 
 // Peer represent the peer
@@ -33,6 +34,7 @@ type Peer struct {
 	quitChan     chan interface{}
 	lock         sync.RWMutex
 	isRunning    bool
+	knownMsgs    *common.RingBuffer
 }
 
 // NewInboundPeer new inbound peer instance
@@ -56,6 +58,7 @@ func newPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msg
 		sendChan:     make(chan *InternalMsg),
 		recvChan:     msgChan,
 		quitChan:     make(chan interface{}),
+		knownMsgs:    common.NewRingBuffer(1024),
 	}
 	if !outBound && conn != nil {
 		peer.conn = NewPeerConn(conn, peer.internalChan)
@@ -236,6 +239,9 @@ func (peer *Peer) recvHandler() {
 		select {
 		case msg = <-peer.internalChan:
 			log.Debug("receive %v type message From peer %s", msg.MsgType(), peer.GetAddr().ToString())
+			if msg.MsgId() != message.EmptyHash {
+				peer.knownMsgs.AddElement(msg.MsgId(), struct{}{})
+			}
 		case <-peer.quitChan:
 			return
 		}
@@ -277,6 +283,9 @@ func (peer *Peer) sendHandler() {
 	for {
 		select {
 		case msg := <-peer.sendChan:
+			if msg.Payload.MsgId() != message.EmptyHash {
+				peer.knownMsgs.AddElement(msg.Payload.MsgId(), struct{}{})
+			}
 			err := peer.conn.SendMessage(msg.Payload)
 			if msg.RespTo != nil {
 				if err != nil {
@@ -332,6 +341,11 @@ func (peer *Peer) GetState() uint64 {
 	peer.lock.RLock()
 	defer peer.lock.RUnlock()
 	return peer.state
+}
+
+// KnownMsg check if the peer already known this message
+func (peer *Peer) KnownMsg(msg message.Message) bool {
+	return peer.knownMsgs.Exist(msg.MsgId())
 }
 
 //disconnectNotify push disconnect msg To channel

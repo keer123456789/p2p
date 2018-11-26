@@ -1,6 +1,7 @@
 package p2p
 
 import (
+	"github.com/DSiSc/craft/types"
 	"github.com/DSiSc/p2p/common"
 	"github.com/DSiSc/p2p/message"
 )
@@ -20,6 +21,10 @@ type InternalMsg struct {
 // peer disconect message ping message
 type peerDisconnecMsg struct {
 	err error
+}
+
+func (this *peerDisconnecMsg) MsgId() types.Hash {
+	return message.EmptyHash
 }
 
 func (this *peerDisconnecMsg) MsgType() message.MessageType {

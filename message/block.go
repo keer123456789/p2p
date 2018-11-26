@@ -8,9 +8,11 @@ const (
 
 // BlockReq block request message
 type BlockReq struct {
-	HeaderHashCount uint8      `json:"header_hash_count"`
-	HashStart       types.Hash `json:"hash_start"`
-	HashStop        types.Hash `json:"hash_stop"`
+	HeaderHash types.Hash `json:"header_hash"`
+}
+
+func (this *BlockReq) MsgId() types.Hash {
+	return EmptyHash
 }
 
 func (this *BlockReq) MsgType() MessageType {
@@ -23,7 +25,11 @@ func (this *BlockReq) ResponseMsgType() MessageType {
 
 // Block block message
 type Block struct {
-	Blocks []*types.Block `json:"blocks"`
+	Block *types.Block `json:"block"`
+}
+
+func (this *Block) MsgId() types.Hash {
+	return this.Block.HeaderHash
 }
 
 func (this *Block) MsgType() MessageType {

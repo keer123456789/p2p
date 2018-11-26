@@ -7,6 +7,10 @@ type Transaction struct {
 	Tx *types.Transaction `json:"tx"`
 }
 
+func (this *Transaction) MsgId() types.Hash {
+	return *this.Tx.Data.Hash
+}
+
 func (this *Transaction) MsgType() MessageType {
 	return TX_TYPE
 }

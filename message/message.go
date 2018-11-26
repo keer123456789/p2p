@@ -5,10 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/DSiSc/craft/types"
 	"io"
 )
 
+var EmptyHash = types.Hash{}
+
 type Message interface {
+	MsgId() types.Hash
 	MsgType() MessageType
 	ResponseMsgType() MessageType
 }

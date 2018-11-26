@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	MAX_BUF_LEN    = 1024 * 256 //the maximum buffer to receive message
+	MAX_BUF_LEN    = 1024 * 256 //the maximum buffer To receive message
 	WRITE_DEADLINE = 5          //deadline of conn write
 )
 
@@ -26,34 +26,34 @@ type Peer struct {
 	serverAddr   *common.NetAddress
 	addr         *common.NetAddress
 	state        uint64    //current state of this peer
-	conn         *PeerConn //connection to this peer
+	conn         *PeerConn //connection To this peer
 	internalChan chan message.Message
-	sendChan     chan *internalMsg
-	recvChan     chan<- *internalMsg
+	sendChan     chan *InternalMsg
+	recvChan     chan<- *InternalMsg
 	quitChan     chan interface{}
 	lock         sync.RWMutex
 	isRunning    bool
 }
 
 // NewInboundPeer new inbound peer instance
-func NewInboundPeer(serverAddr, addr *common.NetAddress, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
+func NewInboundPeer(serverAddr, addr *common.NetAddress, msgChan chan<- *InternalMsg, conn net.Conn) *Peer {
 	return newPeer(serverAddr, addr, false, false, msgChan, conn)
 }
 
 // NewInboundPeer new outbound peer instance
-func NewOutboundPeer(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+func NewOutboundPeer(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *InternalMsg) *Peer {
 	return newPeer(serverAddr, addr, true, persistent, msgChan, nil)
 }
 
 // create a peer instance.
-func newPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
+func newPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msgChan chan<- *InternalMsg, conn net.Conn) *Peer {
 	peer := &Peer{
 		serverAddr:   serverAddr,
 		addr:         addr,
 		outBound:     outBound,
 		persistent:   persistent,
 		internalChan: make(chan message.Message),
-		sendChan:     make(chan *internalMsg),
+		sendChan:     make(chan *InternalMsg),
 		recvChan:     msgChan,
 		quitChan:     make(chan interface{}),
 	}
@@ -63,7 +63,7 @@ func newPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msg
 	return peer
 }
 
-// Start connect to peer and send message to each other
+// Start connect To peer and send message To each other
 func (peer *Peer) Start() error {
 	peer.lock.Lock()
 	defer peer.lock.Unlock()
@@ -149,7 +149,7 @@ func (peer *Peer) handShakeWithInBoundPeer() error {
 	return peer.sendVersionAckMessage()
 }
 
-// send version message to this peer.
+// send version message To this peer.
 func (peer *Peer) sendVersionMessage() error {
 	vmsg := &message.Version{
 		Version: version.Version,
@@ -158,7 +158,7 @@ func (peer *Peer) sendVersionMessage() error {
 	return peer.conn.SendMessage(vmsg)
 }
 
-// send version ack message to this peer.
+// send version ack message To this peer.
 func (peer *Peer) sendVersionAckMessage() error {
 	vackmsg := &message.VersionAck{}
 	return peer.conn.SendMessage(vackmsg)
@@ -186,7 +186,7 @@ func (peer *Peer) readVersionAckMessage() error {
 	return nil
 }
 
-// read specified type message from peer.
+// read specified type message From peer.
 func (peer *Peer) readMessageWithType(msgType message.MessageType) (message.Message, error) {
 	timer := time.NewTicker(5 * time.Second)
 	select {
@@ -194,12 +194,12 @@ func (peer *Peer) readMessageWithType(msgType message.MessageType) (message.Mess
 		if msg.MsgType() == msgType {
 			return msg, nil
 		} else {
-			log.Error("error type message received from peer %s, expected: %v, actual: %v", peer.addr.ToString(), msgType, msg.MsgType())
-			return nil, fmt.Errorf("error type message received from peer %s, expected: %v, actual: %v", peer.addr.ToString(), msgType, msg.MsgType())
+			log.Error("error type message received From peer %s, expected: %v, actual: %v", peer.addr.ToString(), msgType, msg.MsgType())
+			return nil, fmt.Errorf("error type message received From peer %s, expected: %v, actual: %v", peer.addr.ToString(), msgType, msg.MsgType())
 		}
 	case <-timer.C:
-		log.Error("read %v type message from peer %s time out", msgType, peer.addr.ToString())
-		return nil, fmt.Errorf("read %v type message from peer %s time out", msgType, peer.addr.ToString())
+		log.Error("read %v type message From peer %s time out", msgType, peer.addr.ToString())
+		return nil, fmt.Errorf("read %v type message From peer %s time out", msgType, peer.addr.ToString())
 	}
 }
 
@@ -216,14 +216,14 @@ func (peer *Peer) Stop() {
 	peer.isRunning = false
 }
 
-// initConnection init the connection to peer.
+// initConnection init the connection To peer.
 func (peer *Peer) initConn() error {
-	log.Debug("start init the connection to peer %s", peer.addr.ToString())
+	log.Debug("start init the connection To peer %s", peer.addr.ToString())
 	dialAddr := peer.addr.IP + ":" + strconv.Itoa(int(peer.addr.Port))
 	conn, err := net.Dial("tcp", dialAddr)
 	if err != nil {
-		log.Error("failed to dial to peer %s, as : %v", peer.addr.ToString(), err)
-		return fmt.Errorf("failed to dial to peer %s, as : %v", peer.addr.ToString(), err)
+		log.Error("failed To dial To peer %s, as : %v", peer.addr.ToString(), err)
+		return fmt.Errorf("failed To dial To peer %s, as : %v", peer.addr.ToString(), err)
 	}
 	peer.conn = NewPeerConn(conn, peer.internalChan)
 	return nil
@@ -235,7 +235,7 @@ func (peer *Peer) recvHandler() {
 		var msg message.Message
 		select {
 		case msg = <-peer.internalChan:
-			log.Debug("receive %v type message from peer %s", msg.MsgType(), peer.GetAddr().ToString())
+			log.Debug("receive %v type message From peer %s", msg.MsgType(), peer.GetAddr().ToString())
 		case <-peer.quitChan:
 			return
 		}
@@ -246,28 +246,28 @@ func (peer *Peer) recvHandler() {
 				Reason: "invalid message, as version messages can only be sent once ",
 			}
 			peer.conn.SendMessage(reject)
-			peer.disconnectNotify(errors.New("receive an invalid message from remote"))
+			peer.disconnectNotify(errors.New("receive an invalid message From remote"))
 			return
 		case *message.VersionAck:
 			reject := &message.RejectMsg{
 				Reason: "invalid message, as version ack messages can only be sent once ",
 			}
 			peer.conn.SendMessage(reject)
-			peer.disconnectNotify(errors.New("receive an invalid message from remote"))
+			peer.disconnectNotify(errors.New("receive an invalid message From remote"))
 			return
 		case *message.RejectMsg:
 			rejectMsg := msg.(*message.RejectMsg)
-			log.Error("receive a reject message from remote, reject reason: %s", rejectMsg.Reason)
+			log.Error("receive a reject message From remote, reject reason: %s", rejectMsg.Reason)
 			peer.disconnectNotify(errors.New(rejectMsg.Reason))
 			return
 		default:
-			imsg := &internalMsg{
-				from:    peer.addr,
-				to:      peer.serverAddr,
-				payload: msg,
+			imsg := &InternalMsg{
+				From:    peer.addr,
+				To:      peer.serverAddr,
+				Payload: msg,
 			}
 			peer.recvChan <- imsg
-			log.Debug("peer %s send %v type message to message channel", peer.GetAddr().ToString(), msg.MsgType())
+			log.Debug("peer %s send %v type message To message channel", peer.GetAddr().ToString(), msg.MsgType())
 		}
 	}
 }
@@ -277,12 +277,12 @@ func (peer *Peer) sendHandler() {
 	for {
 		select {
 		case msg := <-peer.sendChan:
-			err := peer.conn.SendMessage(msg.payload)
-			if msg.respTo != nil {
+			err := peer.conn.SendMessage(msg.Payload)
+			if msg.RespTo != nil {
 				if err != nil {
-					msg.respTo <- err
+					msg.RespTo <- err
 				} else {
-					msg.respTo <- nilError
+					msg.RespTo <- nilError
 				}
 			}
 			if err != nil {
@@ -316,7 +316,7 @@ func (peer *Peer) CurrentState() uint64 {
 }
 
 // Channel get peer's send channel
-func (peer *Peer) Channel() chan<- *internalMsg {
+func (peer *Peer) Channel() chan<- *InternalMsg {
 	return peer.sendChan
 }
 
@@ -334,16 +334,16 @@ func (peer *Peer) GetState() uint64 {
 	return peer.state
 }
 
-//disconnectNotify push disconnect msg to channel
+//disconnectNotify push disconnect msg To channel
 func (peer *Peer) disconnectNotify(err error) {
 	log.Debug("[p2p]call disconnectNotify for %s, as: %v", peer.GetAddr().ToString(), err)
 	disconnectMsg := &peerDisconnecMsg{
 		err,
 	}
-	msg := &internalMsg{
-		from:    peer.addr,
-		to:      peer.serverAddr,
-		payload: disconnectMsg,
+	msg := &InternalMsg{
+		From:    peer.addr,
+		To:      peer.serverAddr,
+		Payload: disconnectMsg,
 	}
 	peer.recvChan <- msg
 }

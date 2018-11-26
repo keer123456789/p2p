@@ -181,7 +181,7 @@ func TestAddressManager_Stop(t *testing.T) {
 	select {
 	case <-addrManger.quitChan:
 	default:
-		assert.Nil(errors.New("Failed to stop address manager"))
+		assert.Nil(errors.New("Failed To stop address manager"))
 	}
 }
 

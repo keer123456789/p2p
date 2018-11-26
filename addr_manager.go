@@ -16,16 +16,16 @@ import (
 )
 
 const (
-	// addresses under which the address book will claim to need more addresses.
+	// addresses under which the address book will claim To need more addresses.
 	needAddressThreshold = 1000
 	syncInterval         = 2 * time.Minute
 	// getAddrMax is the most addresses that we will send in response
-	// to a getAddr (in practise the most addresses we will return from a
-	// call to AddressCache()).
+	// To a getAddr (in practise the most addresses we will return From a
+	// call To AddressCache()).
 	getAddrMax = 2500
 )
 
-// AddressManager is used to manage neighbor's address
+// AddressManager is used To manage neighbor's address
 type AddressManager struct {
 	filePath  string
 	ourAddrs  map[string]*common.NetAddress
@@ -62,7 +62,7 @@ func (addrManager *AddressManager) AddLocalAddress(port int32) error {
 	defer addrManager.lock.Unlock()
 	localIps, err := getLocalAddresses()
 	if err != nil {
-		return fmt.Errorf("failed to add our local address to address manager as:%v", err)
+		return fmt.Errorf("failed To add our local address To address manager as:%v", err)
 	}
 	for _, localIp := range localIps {
 		netAddr, err := common.ParseNetAddress(localIp + ":" + strconv.Itoa(int(port)))
@@ -96,7 +96,7 @@ func (addrManager *AddressManager) IsOurAddress(addr *common.NetAddress) bool {
 
 // AddAddresses add new addresses
 func (addrManager *AddressManager) AddAddresses(addrs []*common.NetAddress) {
-	log.Debug("add %d addresses to book", len(addrs))
+	log.Debug("add %d addresses To book", len(addrs))
 	addrManager.lock.Lock()
 	defer addrManager.lock.Unlock()
 	for _, addr := range addrs {
@@ -114,7 +114,7 @@ func (addrManager *AddressManager) AddAddresses(addrs []*common.NetAddress) {
 
 // AddAddress add a new address
 func (addrManager *AddressManager) AddAddress(addr *common.NetAddress) {
-	log.Debug("add new address %s to book", addr.ToString())
+	log.Debug("add new address %s To book", addr.ToString())
 	addrManager.lock.Lock()
 	defer addrManager.lock.Unlock()
 	if addrManager.ourAddrs[addr.ToString()] != nil {
@@ -146,7 +146,7 @@ func (addrManager *AddressManager) GetAddress() (*common.NetAddress, error) {
 	return nil, errors.New("no address in address book")
 }
 
-// GetAddresses get a random address list to send to peer
+// GetAddresses get a random address list To send To peer
 func (addrManager *AddressManager) GetAddresses() []*common.NetAddress {
 	addrs := addrManager.GetAllAddress()
 	if addrManager.GetAddressCount() <= getAddrMax {
@@ -186,7 +186,7 @@ func (addrManager *AddressManager) NeedMoreAddrs() bool {
 	return addrManager.GetAddressCount() < needAddressThreshold
 }
 
-// Save save addresses to file
+// Save save addresses To file
 func (addrManager *AddressManager) Save() {
 	addrManager.lock.Lock()
 	defer addrManager.lock.Unlock()
@@ -202,12 +202,12 @@ func (addrManager *AddressManager) Save() {
 	buf, err := json.Marshal(addrStrs)
 	fmt.Println(string(buf))
 	if err != nil {
-		log.Warn("failed to marshal recent addresses, as: %v", err)
+		log.Warn("failed To marshal recent addresses, as: %v", err)
 	}
 
 	err = ioutil.WriteFile(addrManager.filePath, buf, os.ModePerm)
 	if err != nil {
-		log.Warn("failed to write recent addresses to file, as: %v", err)
+		log.Warn("failed To write recent addresses To file, as: %v", err)
 	}
 
 	addrManager.changed = false
@@ -223,7 +223,7 @@ func (addrManager *AddressManager) Stop() {
 	close(addrManager.quitChan)
 }
 
-// saveHandler save addresses to file periodically
+// saveHandler save addresses To file periodically
 func (addrManager *AddressManager) saveHandler() {
 	saveFileTicker := time.NewTicker(syncInterval)
 	for {
@@ -236,7 +236,7 @@ func (addrManager *AddressManager) saveHandler() {
 	}
 }
 
-// loadAddress load addresses from file.
+// loadAddress load addresses From file.
 func loadAddress(filePath string) map[string]*common.NetAddress {
 	addrStrs := make([]string, 0)
 	addresses := make(map[string]*common.NetAddress)
@@ -245,13 +245,13 @@ func loadAddress(filePath string) map[string]*common.NetAddress {
 	}
 	buf, err := ioutil.ReadFile(filePath)
 	if err != nil {
-		log.Error("failed to read address book file, as: %v", err)
+		log.Error("failed To read address book file, as: %v", err)
 		return addresses
 	}
 
 	err = json.Unmarshal(buf, &addrStrs)
 	if err != nil {
-		log.Error("failed to parse address book file, as %v", err)
+		log.Error("failed To parse address book file, as %v", err)
 		return addresses
 	}
 
@@ -263,7 +263,7 @@ func loadAddress(filePath string) map[string]*common.NetAddress {
 		}
 		addresses[addrStr] = addr
 	}
-	log.Debug("load %d addresses from file %s", len(addresses), filePath)
+	log.Debug("load %d addresses From file %s", len(addresses), filePath)
 	return addresses
 }
 
@@ -272,13 +272,13 @@ func getLocalAddresses() ([]string, error) {
 	ips := make([]string, 0)
 	ifaces, err := net.Interfaces()
 	if err != nil {
-		log.Error("failed to get system's interfaces")
-		return nil, errors.New("failed to get system's interfaces")
+		log.Error("failed To get system's interfaces")
+		return nil, errors.New("failed To get system's interfaces")
 	}
 	for _, i := range ifaces {
 		addrs, err := i.Addrs()
 		if err != nil {
-			log.Warn("failed to get interface's address")
+			log.Warn("failed To get interface's address")
 			continue
 		}
 		// handle err

@@ -41,7 +41,7 @@ func mockPeerConn() *PeerConn {
 
 func TestNewInboundPeer(t *testing.T) {
 	assert := assert.New(t)
-	msgChan := make(chan *internalMsg)
+	msgChan := make(chan *InternalMsg)
 	peer := NewInboundPeer(mockServerAddress(), mockAddress(), msgChan, &testConn{})
 	assert.NotNil(peer)
 	assert.False(peer.outBound)
@@ -49,7 +49,7 @@ func TestNewInboundPeer(t *testing.T) {
 
 func TestNewOutboundPeer(t *testing.T) {
 	assert := assert.New(t)
-	msgChan := make(chan *internalMsg)
+	msgChan := make(chan *InternalMsg)
 	peer := NewOutboundPeer(mockServerAddress(), mockAddress(), true, msgChan)
 	assert.NotNil(peer)
 	assert.True(peer.persistent)
@@ -75,10 +75,10 @@ func TestPeer_Start(t *testing.T) {
 	peerConn := mockPeerConn()
 	monkey.Patch(NewPeerConn, func(conn net.Conn, recvChan chan message.Message) *PeerConn { return peerConn })
 	// start inbound peer
-	msgChan := make(chan *internalMsg)
+	msgChan := make(chan *InternalMsg)
 	peer := NewInboundPeer(mockServerAddress(), mockAddress(), msgChan, newTestConn())
 	assert.NotNil(peer)
-	// mock receive message from peerConn
+	// mock receive message From peerConn
 	go func(msgs []message.Message) {
 		for _, msg := range msgs {
 			peer.internalChan <- msg
@@ -91,7 +91,7 @@ func TestPeer_Start(t *testing.T) {
 	select {
 	case <-msgChan:
 	case <-timer.C:
-		assert.Nil(errors.New("failed to receive heart beat message"))
+		assert.Nil(errors.New("failed To receive heart beat message"))
 	}
 
 	// test stop peer
@@ -99,7 +99,7 @@ func TestPeer_Start(t *testing.T) {
 	select {
 	case <-peer.quitChan:
 	default:
-		assert.Nil(errors.New("failed to stop peer"))
+		assert.Nil(errors.New("failed To stop peer"))
 	}
 }
 
@@ -123,10 +123,10 @@ func TestPeer_Start1(t *testing.T) {
 	peerConn := mockPeerConn()
 	monkey.Patch(NewPeerConn, func(conn net.Conn, recvChan chan message.Message) *PeerConn { return peerConn })
 	// start outbound peer
-	msgChan := make(chan *internalMsg)
+	msgChan := make(chan *InternalMsg)
 	peer := NewOutboundPeer(serverAddr, mockAddress(), false, msgChan)
 
-	// mock receive message from peerConn
+	// mock receive message From peerConn
 	go func(msgs []message.Message) {
 		for _, msg := range msgs {
 			peer.internalChan <- msg
@@ -141,7 +141,7 @@ func TestPeer_Start1(t *testing.T) {
 	select {
 	case <-msgChan:
 	case <-timer.C:
-		assert.Nil(errors.New("failed to receive heart beat message"))
+		assert.Nil(errors.New("failed To receive heart beat message"))
 	}
 
 	// test stop peer
@@ -149,13 +149,13 @@ func TestPeer_Start1(t *testing.T) {
 	select {
 	case <-peer.quitChan:
 	default:
-		assert.Nil(errors.New("failed to stop peer"))
+		assert.Nil(errors.New("failed To stop peer"))
 	}
 }
 
 func TestPeer_IsPersistent(t *testing.T) {
 	assert := assert.New(t)
-	msgChan := make(chan *internalMsg)
+	msgChan := make(chan *InternalMsg)
 	peer := NewOutboundPeer(mockServerAddress(), mockAddress(), true, msgChan)
 	assert.NotNil(peer)
 	assert.True(peer.IsPersistent())
@@ -163,7 +163,7 @@ func TestPeer_IsPersistent(t *testing.T) {
 
 func TestPeer_GetAddr(t *testing.T) {
 	assert := assert.New(t)
-	msgChan := make(chan *internalMsg)
+	msgChan := make(chan *InternalMsg)
 	addr := mockAddress()
 	peer := NewOutboundPeer(mockServerAddress(), addr, true, msgChan)
 	assert.NotNil(peer)
@@ -172,7 +172,7 @@ func TestPeer_GetAddr(t *testing.T) {
 
 func TestPeer_CurrentState(t *testing.T) {
 	assert := assert.New(t)
-	msgChan := make(chan *internalMsg)
+	msgChan := make(chan *InternalMsg)
 	peer := NewOutboundPeer(mockServerAddress(), mockAddress(), true, msgChan)
 	assert.NotNil(peer)
 	assert.Equal(uint64(0), peer.CurrentState())
@@ -198,10 +198,10 @@ func TestPeer_Channel(t *testing.T) {
 	monkey.Patch(NewPeerConn, func(conn net.Conn, recvChan chan message.Message) *PeerConn { return peerConn })
 
 	// start inbound peer
-	msgChan := make(chan *internalMsg)
+	msgChan := make(chan *InternalMsg)
 	peer := NewInboundPeer(mockServerAddress(), mockAddress(), msgChan, newTestConn())
 	assert.NotNil(peer)
-	// mock receive message from peerConn
+	// mock receive message From peerConn
 	go func(msgs []message.Message) {
 		for _, msg := range msgs {
 			peer.internalChan <- msg
@@ -212,13 +212,13 @@ func TestPeer_Channel(t *testing.T) {
 
 	// send message
 	respChan := make(chan interface{})
-	sendMsg := &internalMsg{
-		from: nil,
-		to:   peer.GetAddr(),
-		payload: &message.PingMsg{
+	sendMsg := &InternalMsg{
+		From: nil,
+		To:   peer.GetAddr(),
+		Payload: &message.PingMsg{
 			State: 1,
 		},
-		respTo: respChan,
+		RespTo: respChan,
 	}
 	peer.Channel() <- sendMsg
 	time.Sleep(time.Second)
@@ -228,7 +228,7 @@ func TestPeer_Channel(t *testing.T) {
 			assert.Nil(err)
 		}
 	default:
-		assert.Nil(errors.New("failed to send message"))
+		assert.Nil(errors.New("failed To send message"))
 	}
 
 	// test stop peer
@@ -236,13 +236,13 @@ func TestPeer_Channel(t *testing.T) {
 	select {
 	case <-peer.quitChan:
 	default:
-		assert.Nil(errors.New("failed to stop peer"))
+		assert.Nil(errors.New("failed To stop peer"))
 	}
 }
 
 func TestPeer_SetState(t *testing.T) {
 	assert := assert.New(t)
-	msgChan := make(chan *internalMsg)
+	msgChan := make(chan *InternalMsg)
 	peer := NewInboundPeer(mockServerAddress(), mockAddress(), msgChan, &testConn{})
 	assert.NotNil(peer)
 

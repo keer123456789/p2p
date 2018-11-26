@@ -44,7 +44,7 @@ func TestPeerConn_Start(t *testing.T) {
 	case m := <-recvChan:
 		assert.Equal(msg, m)
 	case <-timer.C:
-		assert.Nil(errors.New("read message from connection time out"))
+		assert.Nil(errors.New("read message From connection time out"))
 	}
 	peerConn.Stop()
 }
@@ -61,7 +61,7 @@ func TestPeerConn_Stop(t *testing.T) {
 	select {
 	case <-peerConn.quitChan:
 	case <-timer.C:
-		assert.Nil(errors.New("failed to stop peer connection"))
+		assert.Nil(errors.New("failed To stop peer connection"))
 	}
 }
 
@@ -104,7 +104,7 @@ func TestPeerConn_SendMessage(t *testing.T) {
 	case msgByte2 := <-testChan:
 		assert.Equal(msgByte1, msgByte2)
 	case <-timer.C:
-		assert.Nil(errors.New("failed to stop peer connection"))
+		assert.Nil(errors.New("failed To stop peer connection"))
 	}
 
 	peerConn.Stop()

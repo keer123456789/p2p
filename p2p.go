@@ -23,16 +23,16 @@ const (
 	heartBeatInterval           = 10 * time.Second
 )
 
-// PeerFilter used to filter the peer satisfy the request
+// PeerFilter used To filter the peer satisfy the request
 type PeerFilter func(peerState uint64) bool
 
 // P2P is p2p service implementation.
 type P2P struct {
 	config        *config.P2PConfig
 	listener      net.Listener // net listener
-	internalChan  chan *internalMsg
-	msgChan       chan message.Message
-	stallChan     chan *internalMsg
+	internalChan  chan *InternalMsg
+	msgChan       chan *InternalMsg
+	stallChan     chan *InternalMsg
 	quitChan      chan struct{}
 	isRunning     int32
 	addrManager   *AddressManager
@@ -49,9 +49,9 @@ func NewP2P(config *config.P2PConfig) (*P2P, error) {
 	return &P2P{
 		config:        config,
 		addrManager:   addrManger,
-		msgChan:       make(chan message.Message),
-		internalChan:  make(chan *internalMsg),
-		stallChan:     make(chan *internalMsg),
+		msgChan:       make(chan *InternalMsg),
+		internalChan:  make(chan *InternalMsg),
+		stallChan:     make(chan *InternalMsg),
 		quitChan:      make(chan struct{}),
 		isRunning:     0,
 		pendingPeers:  make(map[string]*Peer),
@@ -79,22 +79,22 @@ func (service *P2P) Start() error {
 
 	err = service.addrManager.AddLocalAddress(netAddr.Port)
 	if err != nil {
-		log.Error("failed to add local address to address manager, as %v", err)
+		log.Error("failed To add local address To address manager, as %v", err)
 		return err
 	}
 
 	listener, err := net.Listen(netAddr.Protocol, netAddr.IP+":"+strconv.Itoa(int(netAddr.Port)))
 	if err != nil {
-		log.Error("failed to create listener with address: %s, as: %v", netAddr.ToString(), err)
+		log.Error("failed To create listener with address: %s, as: %v", netAddr.ToString(), err)
 		return err
 	}
 	service.listener = listener
 
-	go service.startListen(listener) // listen to accept new connection
+	go service.startListen(listener) // listen To accept new connection
 	go service.recvHandler()         // message receive handler
 	go service.stallHandler()        // message response timeout handler
-	go service.connectPeers()        // connect to network peers
-	go service.addressHandler()      // request address from neighbor peers
+	go service.connectPeers()        // connect To network peers
+	go service.addressHandler()      // request address From neighbor peers
 	go service.heartBeatHandler()    // start heartbeat handler
 
 	service.isRunning = 1
@@ -128,10 +128,10 @@ func (service *P2P) Stop() {
 	service.lock.Unlock()
 }
 
-// recvHandler listen to accept connection from inbound peer.
+// recvHandler listen To accept connection From inbound peer.
 func (service *P2P) startListen(listener net.Listener) {
 	for {
-		// listen to accept new connection
+		// listen To accept new connection
 		conn, err := listener.Accept()
 		if err != nil || conn == nil {
 			log.Error("encounter error when accepting the new connection: %v", err)
@@ -139,7 +139,7 @@ func (service *P2P) startListen(listener net.Listener) {
 		}
 
 		// parse inbound connection's address
-		log.Debug("accept a new connection from %v", conn.RemoteAddr())
+		log.Debug("accept a new connection From %v", conn.RemoteAddr())
 		addr, err := common.ParseNetAddress(conn.RemoteAddr().String())
 		if err != nil {
 			log.Error("unrecognized peer address: %v", err)
@@ -159,7 +159,7 @@ func (service *P2P) startListen(listener net.Listener) {
 		err = service.addPendingPeer(peer)
 		if err != nil {
 			conn.Close()
-			log.Error("failed to add peer %s to pending queue, as:%v", peer.GetAddr().ToString(), err)
+			log.Error("failed To add peer %s To pending queue, as:%v", peer.GetAddr().ToString(), err)
 			continue
 		}
 		go service.initInbondPeer(peer)
@@ -179,7 +179,7 @@ func (service *P2P) initInbondPeer(peer *Peer) {
 
 // add pending peer
 func (service *P2P) addPendingPeer(peer *Peer) error {
-	log.Info("add peer %s to pending queue", peer.GetAddr().IP)
+	log.Info("add peer %s To pending queue", peer.GetAddr().IP)
 	service.lock.Lock()
 	defer service.lock.Unlock()
 	if service.pendingPeers[peer.GetAddr().IP] != nil {
@@ -191,7 +191,7 @@ func (service *P2P) addPendingPeer(peer *Peer) error {
 
 // remove pending peer
 func (service *P2P) removePendingPeer(peer *Peer) {
-	log.Info("remove peer %s from pending queue", peer.GetAddr().IP)
+	log.Info("remove peer %s From pending queue", peer.GetAddr().IP)
 	service.lock.Lock()
 	defer service.lock.Unlock()
 	delete(service.pendingPeers, peer.GetAddr().IP)
@@ -235,10 +235,10 @@ func (service *P2P) stallHandler() {
 				continue
 			}
 			if service.isOutMsg(msg) {
-				log.Debug("stall handler register a %v type message to peer %s", msg.payload.MsgType(), msg.to.ToString())
+				log.Debug("stall handler register a %v type message To peer %s", msg.Payload.MsgType(), msg.To.ToString())
 				addPendingRespMsg(pendingResponses, msg)
 			} else {
-				log.Debug("stall handler receive a %v type message from %s", msg.payload.MsgType(), msg.from.ToString())
+				log.Debug("stall handler receive a %v type message From %s", msg.Payload.MsgType(), msg.From.ToString())
 				removePendingRespMsg(pendingResponses, msg)
 			}
 		case <-stallTicker.C:
@@ -249,7 +249,7 @@ func (service *P2P) stallHandler() {
 					if now.Before(deadline) {
 						continue
 					}
-					log.Error("receive %v type message's from Peer %s timeout", msgType, addr.ToString())
+					log.Error("receive %v type message's From Peer %s timeout", msgType, addr.ToString())
 					timeOutAddrs = append(timeOutAddrs, addr)
 					service.stopPeer(addr)
 					break
@@ -265,37 +265,37 @@ func (service *P2P) stallHandler() {
 }
 
 // check whether msg is out message.
-func (service *P2P) isOutMsg(msg *internalMsg) bool {
-	if msg.from == nil {
+func (service *P2P) isOutMsg(msg *InternalMsg) bool {
+	if msg.From == nil {
 		return false
 	}
-	return service.addrManager.IsOurAddress(msg.from)
+	return service.addrManager.IsOurAddress(msg.From)
 }
 
-// add a message to pending response queue
-func addPendingRespMsg(pendingQueue map[*common.NetAddress]map[message.MessageType]time.Time, msg *internalMsg) {
+// add a message To pending response queue
+func addPendingRespMsg(pendingQueue map[*common.NetAddress]map[message.MessageType]time.Time, msg *InternalMsg) {
 	deadline := time.Now().Add(stallResponseTimeout)
-	if pendingQueue[msg.to] == nil {
-		pendingQueue[msg.to] = make(map[message.MessageType]time.Time)
+	if pendingQueue[msg.To] == nil {
+		pendingQueue[msg.To] = make(map[message.MessageType]time.Time)
 	}
-	pendingQueue[msg.to][msg.payload.ResponseMsgType()] = deadline
+	pendingQueue[msg.To][msg.Payload.ResponseMsgType()] = deadline
 }
 
 // remove message when receiving corresponding response.
-func removePendingRespMsg(pendingQueue map[*common.NetAddress]map[message.MessageType]time.Time, msg *internalMsg) {
-	if pendingQueue[msg.from] != nil {
-		delete(pendingQueue[msg.from], msg.payload.MsgType())
+func removePendingRespMsg(pendingQueue map[*common.NetAddress]map[message.MessageType]time.Time, msg *InternalMsg) {
+	if pendingQueue[msg.From] != nil {
+		delete(pendingQueue[msg.From], msg.Payload.MsgType())
 	}
 }
 
-// connectPeers connect to peers in p2p network
+// connectPeers connect To peers in p2p network
 func (service *P2P) connectPeers() {
 	service.connectPersistentPeers()
 	service.connectDnsSeeds()
 	service.connectNormalPeers()
 }
 
-// connect to persistent peers
+// connect To persistent peers
 func (service *P2P) connectPersistentPeers() {
 	if service.config.PersistentPeers != "" {
 		peerAddres := strings.Split(service.config.PersistentPeers, ",")
@@ -316,15 +316,15 @@ func (service *P2P) connectPersistentPeers() {
 	}
 }
 
-// connect to dns seeds
+// connect To dns seeds
 func (service *P2P) connectDnsSeeds() {
 	//TODO
 }
 
-// connect to dns seeds
+// connect To dns seeds
 func (service *P2P) connectNormalPeers() {
-	log.Debug("start connection to normal peers")
-	// random select peer to connect
+	log.Debug("start connection To normal peers")
+	// random select peer To connect
 	ticker := time.NewTicker(30 * time.Second)
 	attemptTimes := 30 * (service.config.MaxConnOutBound - service.GetOutBountPeersCount())
 	for {
@@ -333,12 +333,12 @@ func (service *P2P) connectNormalPeers() {
 				if service.containsPeer(addr) {
 					continue
 				}
-				log.Info("start connecting to peer %s", addr.ToString())
+				log.Info("start connecting To peer %s", addr.ToString())
 				peer := NewOutboundPeer(service.addrManager.OurAddresses()[0], addr, false, service.internalChan)
 				go service.connectPeer(peer)
 			}
 		} else {
-			// connect to peer
+			// connect To peer
 			for i := 0; i <= attemptTimes; i++ {
 				if service.GetOutBountPeersCount() >= service.config.MaxConnOutBound || service.addrManager.GetAddressCount() <= service.GetOutBountPeersCount() {
 					break
@@ -350,7 +350,7 @@ func (service *P2P) connectNormalPeers() {
 				if service.containsPeer(addr) {
 					continue
 				}
-				log.Info("start connecting to peer %s", addr.ToString())
+				log.Info("start connecting To peer %s", addr.ToString())
 				peer := NewOutboundPeer(service.addrManager.OurAddresses()[0], addr, false, service.internalChan)
 				go service.connectPeer(peer)
 			}
@@ -372,19 +372,19 @@ func (service *P2P) containsPeer(addr *common.NetAddress) bool {
 	return service.pendingPeers[addr.IP] != nil || service.outbountPeers[addr.ToString()] != nil || service.inboundPeers[addr.ToString()] != nil
 }
 
-// connect to a peer
+// connect To a peer
 func (service *P2P) connectPeer(peer *Peer) {
 	ticker := time.NewTicker(persistentPeerRetryInterval)
 RETRY:
 	err := service.addPendingPeer(peer)
 	if err != nil {
-		log.Error("failed to add peer %s to pending list, as: %v", peer.GetAddr().ToString(), err)
+		log.Error("failed To add peer %s To pending list, as: %v", peer.GetAddr().ToString(), err)
 	} else {
 		err = peer.Start()
 	}
 	if err != nil {
 		service.removePendingPeer(peer)
-		log.Error("failed to connect to peer %s, as: %v", peer.GetAddr().ToString(), err)
+		log.Error("failed To connect To peer %s, as: %v", peer.GetAddr().ToString(), err)
 		if peer.IsPersistent() {
 			select {
 			case <-ticker.C:
@@ -417,7 +417,7 @@ func (service *P2P) stopPeer(addr *common.NetAddress) {
 	}
 }
 
-// addresses handler(request more addresses from neighbor peers)
+// addresses handler(request more addresses From neighbor peers)
 func (service *P2P) addressHandler() {
 	ticker := time.NewTicker(30 * time.Second)
 	for {
@@ -438,37 +438,37 @@ func (service *P2P) addressHandler() {
 	}
 }
 
-// receive handler (receive message from neighbor peers)
+// receive handler (receive message From neighbor peers)
 func (service *P2P) recvHandler() {
 	for {
 		select {
 		case msg := <-service.internalChan:
-			log.Debug("Server receive a message from %s", msg.from.ToString())
+			log.Debug("Server receive a message From %s", msg.From.ToString())
 			service.stallChan <- msg
-			switch msg.payload.(type) {
+			switch msg.Payload.(type) {
 			case *peerDisconnecMsg:
-				service.stopPeer(msg.from)
+				service.stopPeer(msg.From)
 			case *message.PingMsg:
 				pingMsg := &message.PongMsg{
 					State: LocalState(),
 				}
-				peer := service.GetPeerByAddress(msg.from)
+				peer := service.GetPeerByAddress(msg.From)
 				service.sendMsg(peer, pingMsg)
 			case *message.PongMsg:
-				peer := service.GetPeerByAddress(msg.from)
-				peer.SetState(msg.payload.(*message.PongMsg).State)
+				peer := service.GetPeerByAddress(msg.From)
+				peer.SetState(msg.Payload.(*message.PongMsg).State)
 			case *message.AddrReq:
 				addrs := service.addrManager.GetAddresses()
 				addrMsg := &message.Addr{
 					NetAddresses: addrs,
 				}
-				peer := service.GetPeerByAddress(msg.from)
+				peer := service.GetPeerByAddress(msg.From)
 				service.sendMsg(peer, addrMsg)
 			case *message.Addr:
-				addrMsg := msg.payload.(*message.Addr)
+				addrMsg := msg.Payload.(*message.Addr)
 				service.addrManager.AddAddresses(addrMsg.NetAddresses)
 			default:
-				service.msgChan <- msg.payload
+				service.msgChan <- msg
 			}
 		case <-service.quitChan:
 			return
@@ -492,7 +492,7 @@ func (service *P2P) heartBeatHandler() {
 	}
 }
 
-// BroadCast broad cast message to all neighbor peers
+// BroadCast broad cast message To all neighbor peers
 func (service *P2P) BroadCast(msg message.Message) {
 	service.lock.RLock()
 	defer service.lock.RUnlock()
@@ -505,13 +505,23 @@ func (service *P2P) BroadCast(msg message.Message) {
 	}
 }
 
-// MessageChan get p2p's message channel, (Messages sent to the server will eventually be placed in the message channel)
-func (service *P2P) MessageChan() <-chan message.Message {
+// SendMsg send message to a peer
+func (service *P2P) SendMsg(peerAddr *common.NetAddress, msg message.Message) error {
+	peer := service.GetPeerByAddress(peerAddr)
+	if peer == nil {
+		log.Error("no active peer with address %s", peerAddr.ToString())
+		return fmt.Errorf("no active peer with address %s", peerAddr.ToString())
+	}
+	return service.sendMsg(peer, msg)
+}
+
+// MessageChan get p2p's message channel, (Messages sent To the server will eventually be placed in the message channel)
+func (service *P2P) MessageChan() <-chan *InternalMsg {
 	log.Debug("get p2p's message chan")
 	return service.msgChan
 }
 
-// Gather gather newest data from p2p network
+// Gather gather newest data From p2p network
 func (service *P2P) Gather(peerFilter PeerFilter, reqMsg message.Message) error {
 	if atomic.LoadInt32(&service.isRunning) != 1 {
 		log.Error("P2P have not been started yet")
@@ -535,9 +545,9 @@ func (service *P2P) Gather(peerFilter PeerFilter, reqMsg message.Message) error 
 	return errors.New("no suitable peer")
 }
 
-// sendMsg send message to a peer.
+// sendMsg send message To a peer.
 func (service *P2P) sendMsg(peer *Peer, msg message.Message) error {
-	message := &internalMsg{
+	message := &InternalMsg{
 		service.addrManager.OurAddresses()[0],
 		peer.addr,
 		msg,
@@ -548,10 +558,10 @@ func (service *P2P) sendMsg(peer *Peer, msg message.Message) error {
 	return nil
 }
 
-// register need response message to pending response queue
-func (service *P2P) registerPendingResp(msg *internalMsg) {
+// register need response message To pending response queue
+func (service *P2P) registerPendingResp(msg *InternalMsg) {
 	//check whether message need response
-	if msg.payload.ResponseMsgType() != message.NIL {
+	if msg.Payload.ResponseMsgType() != message.NIL {
 		service.stallChan <- msg
 	}
 }

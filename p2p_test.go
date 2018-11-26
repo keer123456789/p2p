@@ -24,7 +24,7 @@ func mockConfig() *config.P2PConfig {
 	}
 }
 
-func mockPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
+func mockPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msgChan chan<- *InternalMsg, conn net.Conn) *Peer {
 	peer := newPeer(serverAddr, addr, outBound, persistent, msgChan, conn)
 	monkey.PatchInstanceMethod(reflect.TypeOf(peer), "Start", func(peer *Peer) error {
 		return nil
@@ -75,7 +75,7 @@ func TestP2P_Stop(t *testing.T) {
 	select {
 	case <-p2p.quitChan:
 	default:
-		assert.Error(errors.New("failed to stop the peer."))
+		assert.Error(errors.New("failed To stop the peer."))
 	}
 }
 
@@ -94,7 +94,7 @@ func TestP2P_BroadCast(t *testing.T) {
 	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
 	peer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *InternalMsg) *Peer {
 		return peer
 	})
 
@@ -112,7 +112,7 @@ OUT:
 		}
 	}
 	p2p.BroadCast(msg)
-	// read message from peer's send channel
+	// read message From peer's send channel
 	timeoutTricker := time.NewTicker(5 * time.Second)
 	var wg sync.WaitGroup
 	for _, peer := range p2p.GetPeers() {
@@ -121,9 +121,9 @@ OUT:
 			for {
 				select {
 				case pmsg := <-p.sendChan:
-					switch pmsg.payload.(type) {
+					switch pmsg.Payload.(type) {
 					case *message.PingMsg:
-						assert.Equal(msg, pmsg.payload)
+						assert.Equal(msg, pmsg.Payload)
 						wg.Done()
 						return
 					}
@@ -148,7 +148,7 @@ func TestP2P_SendMsg(t *testing.T) {
 	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
 	mockPeer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *InternalMsg) *Peer {
 		return mockPeer
 	})
 
@@ -169,22 +169,22 @@ OUT:
 				break OUT
 			}
 		case <-timeoutTricker.C:
-			assert.Nil(errors.New("failed to connect persistent peer"))
+			assert.Nil(errors.New("failed To connect persistent peer"))
 			break OUT
 		}
 	}
 	msg := &message.BlockReq{}
 	peer := p2p.GetPeers()[0]
 	go func() {
-		err := p2p.sendMsg(peer, msg)
+		err := p2p.SendMsg(peer.addr, msg)
 		assert.Nil(err)
 	}()
-	// read message from peer's send channel
+	// read message From peer's send channel
 OUT1:
 	for {
 		select {
 		case pmsg := <-peer.sendChan:
-			switch pmsg.payload.(type) {
+			switch pmsg.Payload.(type) {
 			case *message.BlockReq:
 				break OUT1
 			default:
@@ -211,7 +211,7 @@ func TestP2P_GetOutBountPeersCount(t *testing.T) {
 	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
 	peer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *InternalMsg) *Peer {
 		return peer
 	})
 
@@ -247,7 +247,7 @@ func TestP2P_GetPeerByAddress(t *testing.T) {
 	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
 	peer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *InternalMsg) *Peer {
 		return peer
 	})
 
@@ -281,10 +281,10 @@ func TestP2P_GetPeers(t *testing.T) {
 	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
 	peer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewInboundPeer, func(serverAddr, addr *common.NetAddress, msgChan chan<- *internalMsg, conn net.Conn) *Peer {
+	monkey.Patch(NewInboundPeer, func(serverAddr, addr *common.NetAddress, msgChan chan<- *InternalMsg, conn net.Conn) *Peer {
 		return peer
 	})
-	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *InternalMsg) *Peer {
 		return peer
 	})
 
@@ -321,7 +321,7 @@ func TestP2P_Gather(t *testing.T) {
 	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
 	mockPeer := mockPeer(serverAddr, addr, true, false, p2p.internalChan, nil)
-	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *internalMsg) *Peer {
+	monkey.Patch(NewOutboundPeer, func(serverAddr, addr *common.NetAddress, persistent bool, msgChan chan<- *InternalMsg) *Peer {
 		return mockPeer
 	})
 
@@ -334,19 +334,19 @@ func TestP2P_Gather(t *testing.T) {
 
 	time.Sleep(time.Second)
 	if len(p2p.GetPeers()) <= 0 {
-		assert.Nil(errors.New("failed to connect persistent peer"))
+		assert.Nil(errors.New("failed To connect persistent peer"))
 	}
 
-	// retrieve message from send channel
+	// retrieve message From send channel
 	go func() {
 		for {
 			select {
 			case msg := <-p2p.GetPeers()[0].sendChan:
-				switch msg.payload.MsgType() {
+				switch msg.Payload.MsgType() {
 				case message.GET_BLOCKS_TYPE:
-					p2p.internalChan <- &internalMsg{
-						from:    mockPeer.GetAddr(),
-						payload: &message.Block{},
+					p2p.internalChan <- &InternalMsg{
+						From:    mockPeer.GetAddr(),
+						Payload: &message.Block{},
 					}
 				}
 			}
@@ -358,11 +358,11 @@ func TestP2P_Gather(t *testing.T) {
 	timer := time.NewTicker(time.Second)
 	select {
 	case msg := <-p2p.MessageChan():
-		if msg.MsgType() != message.BLOCK_TYPE {
-			assert.Nil(errors.New("failed to gather block from p2p"))
+		if msg.Payload.MsgType() != message.BLOCK_TYPE {
+			assert.Nil(errors.New("failed To gather block From p2p"))
 		}
 	case <-timer.C:
-		assert.Nil(errors.New("failed to connect persistent peer"))
+		assert.Nil(errors.New("failed To connect persistent peer"))
 	}
 	p2p.Stop()
 }
@@ -379,7 +379,7 @@ func newTestListener() *testListener {
 
 func (this *testListener) Accept() (conn net.Conn, err error) {
 	defer func() {
-		// recover from panic if one occured.
+		// recover From panic if one occured.
 		if recover() != nil {
 			err = errors.New("listener have stopped")
 		}

@@ -1,14 +1,20 @@
 package p2p
 
-import "github.com/DSiSc/p2p/message"
+import (
+	"github.com/DSiSc/p2p/common"
+	"github.com/DSiSc/p2p/message"
+)
 
 type P2PAPI interface {
-	// BroadCast broad cast message to all neighbor peers
+	// BroadCast broad cast message To all neighbor peers
 	BroadCast(msg message.Message)
 
-	// Gather gather newest data from p2p network
+	// SendMsg send message to a peer
+	SendMsg(peerAddr *common.NetAddress, msg message.Message) error
+
+	// Gather gather newest data From p2p network
 	Gather(peerFilter PeerFilter, reqMsg message.Message) error
 
-	// MessageChan get p2p's message channel, (Messages sent to the server will eventually be placed in the message channel)
-	MessageChan() <-chan message.Message
+	// MessageChan get p2p's message channel, (Messages sent To the server will eventually be placed in the message channel)
+	MessageChan() <-chan *InternalMsg
 }

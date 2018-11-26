@@ -10,11 +10,11 @@ const (
 )
 
 // internal message type
-type internalMsg struct {
-	from    *common.NetAddress
-	to      *common.NetAddress
-	payload message.Message
-	respTo  chan interface{}
+type InternalMsg struct {
+	From    *common.NetAddress
+	To      *common.NetAddress
+	Payload message.Message
+	RespTo  chan interface{}
 }
 
 // peer disconect message ping message

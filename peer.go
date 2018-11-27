@@ -99,6 +99,8 @@ func (peer *Peer) Start() error {
 			return err
 		}
 	}
+	// request address immediately after handshaking
+	go peer.sendAddrReqMessage()
 	go peer.recvHandler()
 	go peer.sendHandler()
 	return nil
@@ -187,6 +189,12 @@ func (peer *Peer) readVersionAckMessage() error {
 		return err
 	}
 	return nil
+}
+
+// read version ack message
+func (peer *Peer) sendAddrReqMessage() error {
+	addreqMsg := &message.AddrReq{}
+	return peer.conn.SendMessage(addreqMsg)
 }
 
 // read specified type message From peer.

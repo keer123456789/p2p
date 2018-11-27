@@ -2,10 +2,6 @@ package message
 
 import "github.com/DSiSc/craft/types"
 
-const (
-	MAX_BLOCK_NUM = 100
-)
-
 // BlockReq block request message
 type BlockReq struct {
 	HeaderHash types.Hash `json:"header_hash"`

@@ -343,7 +343,7 @@ func TestP2P_Gather(t *testing.T) {
 			select {
 			case msg := <-p2p.GetPeers()[0].sendChan:
 				switch msg.Payload.MsgType() {
-				case message.GET_BLOCKS_TYPE:
+				case message.GET_BLOCK_TYPE:
 					p2p.internalChan <- &InternalMsg{
 						From:    mockPeer.GetAddr(),
 						Payload: &message.Block{},

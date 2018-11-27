@@ -12,7 +12,7 @@ func (this *BlockReq) MsgId() types.Hash {
 }
 
 func (this *BlockReq) MsgType() MessageType {
-	return GET_BLOCKS_TYPE
+	return GET_BLOCK_TYPE
 }
 
 func (this *BlockReq) ResponseMsgType() MessageType {

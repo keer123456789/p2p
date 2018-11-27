@@ -33,7 +33,7 @@ type Peer struct {
 	recvChan     chan<- *InternalMsg
 	quitChan     chan interface{}
 	lock         sync.RWMutex
-	isRunning    bool
+	isRunning    int32
 	knownMsgs    *common.RingBuffer
 }
 
@@ -59,6 +59,7 @@ func newPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msg
 		recvChan:     msgChan,
 		quitChan:     make(chan interface{}),
 		knownMsgs:    common.NewRingBuffer(1024),
+		isRunning:    0,
 	}
 	if !outBound && conn != nil {
 		peer.conn = NewPeerConn(conn, peer.internalChan)
@@ -70,7 +71,7 @@ func newPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msg
 func (peer *Peer) Start() error {
 	peer.lock.Lock()
 	defer peer.lock.Unlock()
-	if peer.isRunning {
+	if peer.isRunning != 0 {
 		log.Error("peer %s has been started", peer.addr.ToString())
 		return fmt.Errorf("peer %s has been started", peer.addr.ToString())
 	}
@@ -103,6 +104,7 @@ func (peer *Peer) Start() error {
 	go peer.sendAddrReqMessage()
 	go peer.recvHandler()
 	go peer.sendHandler()
+	peer.isRunning = 1
 	return nil
 }
 
@@ -220,11 +222,14 @@ func (peer *Peer) Stop() {
 
 	peer.lock.Lock()
 	defer peer.lock.Unlock()
+	if peer.isRunning == 0 {
+		return
+	}
 	if peer.conn != nil {
 		peer.conn.Stop()
 	}
 	close(peer.quitChan)
-	peer.isRunning = false
+	peer.isRunning = 0
 }
 
 // initConnection init the connection To peer.

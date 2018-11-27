@@ -11,29 +11,39 @@ import (
 
 // PeerConn is the abstract of the net.Conn To this peer.
 type PeerConn struct {
-	conn     net.Conn //connection To this peer
-	recvChan chan message.Message
-	quitChan chan interface{}
-	lock     sync.RWMutex
+	conn      net.Conn //connection To this peer
+	recvChan  chan message.Message
+	quitChan  chan interface{}
+	lock      sync.RWMutex
+	isRunning int32
 }
 
 // NewPeerConn create a PeerConn instance
 func NewPeerConn(conn net.Conn, recvChan chan message.Message) *PeerConn {
 	return &PeerConn{
-		conn:     conn,
-		recvChan: recvChan,
-		quitChan: make(chan interface{}),
+		conn:      conn,
+		recvChan:  recvChan,
+		quitChan:  make(chan interface{}),
+		isRunning: 0,
 	}
 }
 
 // Start start PeerConn
 // will start receive and send handler To handle the message From/To net.Conn
 func (peerConn *PeerConn) Start() {
+	peerConn.lock.Lock()
+	defer peerConn.lock.Unlock()
 	go peerConn.recvHandler()
+	peerConn.isRunning = 1
 }
 
 // Stop stop PeerConn
 func (peerConn *PeerConn) Stop() {
+	peerConn.lock.Lock()
+	defer peerConn.lock.Unlock()
+	if peerConn.isRunning == 0 {
+		return
+	}
 	peerConn.conn.Close()
 	close(peerConn.quitChan)
 }

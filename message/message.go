@@ -35,7 +35,7 @@ const (
 	BLOCK_TYPE                           //blk payload
 	TX_TYPE                              //transaction
 	CONSENSUS_TYPE                       //consensus payload
-	GET_BLOCKS_TYPE                      //req blks from peer
+	GET_BLOCK_TYPE                       //req blks from peer
 	NOT_FOUND_TYPE                       //peer can`t find blk according to the hash
 	DISCONNECT_TYPE                      //peer disconnect info raise by link
 	REJECT_TYPE
@@ -142,6 +142,14 @@ func makeEmptyMessage(msgType MessageType) (Message, error) {
 		return &Addr{}, nil
 	case REJECT_TYPE:
 		return &RejectMsg{}, nil
+	case GET_HEADERS_TYPE:
+		return &BlockHeaderReq{}, nil
+	case HEADERS_TYPE:
+		return &BlockHeaders{}, nil
+	case GET_BLOCK_TYPE:
+		return &BlockReq{}, nil
+	case BLOCK_TYPE:
+		return &Block{}, nil
 	default:
 		return nil, fmt.Errorf("unknown message type %v", msgType)
 	}

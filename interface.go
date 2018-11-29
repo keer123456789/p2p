@@ -6,6 +6,12 @@ import (
 )
 
 type P2PAPI interface {
+	// Start start p2p service
+	Start() error
+
+	// Stop stop p2p service
+	Stop()
+
 	// BroadCast broad cast message To all neighbor peers
 	BroadCast(msg message.Message)
 

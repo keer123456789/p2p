@@ -539,12 +539,16 @@ func (service *P2P) Gather(peerFilter PeerFilter, reqMsg message.Message) error 
 		}
 	}
 
-	var err error
-	for _, peer := range reqPeers {
-		err = service.sendMsg(peer, reqMsg)
+Start:
+	if len(reqPeers) > 0 {
+		index := rand.Intn(len(reqPeers))
+		peer := reqPeers[index]
+		err := service.sendMsg(peer, reqMsg)
 		if err == nil {
 			return nil
 		}
+		reqPeers = append(reqPeers[:index], reqPeers[index+1:]...)
+		goto Start
 	}
 	return errors.New("no suitable peer")
 }

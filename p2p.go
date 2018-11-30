@@ -463,7 +463,9 @@ func (service *P2P) recvHandler() {
 					NetAddresses: addrs,
 				}
 				peer := service.GetPeerByAddress(msg.From)
-				service.sendMsg(peer, addrMsg)
+				if peer != nil {
+					service.sendMsg(peer, addrMsg)
+				}
 			case *message.Addr:
 				addrMsg := msg.Payload.(*message.Addr)
 				service.addrManager.AddAddresses(addrMsg.NetAddresses)
@@ -557,7 +559,7 @@ Start:
 func (service *P2P) sendMsg(peer *Peer, msg message.Message) error {
 	message := &InternalMsg{
 		service.addrManager.OurAddresses()[0],
-		peer.addr,
+		peer.GetAddr(),
 		msg,
 		nil,
 	}

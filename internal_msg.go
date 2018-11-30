@@ -28,7 +28,7 @@ func (this *peerDisconnecMsg) MsgId() types.Hash {
 }
 
 func (this *peerDisconnecMsg) MsgType() message.MessageType {
-	return message.PEER_DISCONNECT
+	return message.DISCONNECT_TYPE
 }
 
 func (this *peerDisconnecMsg) ResponseMsgType() message.MessageType {

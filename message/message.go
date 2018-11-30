@@ -30,16 +30,12 @@ const (
 	PONG_TYPE                            //pong  recv nbr height
 	GET_HEADERS_TYPE                     //req blk hdr
 	HEADERS_TYPE                         //blk hdr
-	INV_TYPE                             //inv payload
-	GET_DATA_TYPE                        //req data from peer
 	BLOCK_TYPE                           //blk payload
 	TX_TYPE                              //transaction
-	CONSENSUS_TYPE                       //consensus payload
 	GET_BLOCK_TYPE                       //req blks from peer
 	NOT_FOUND_TYPE                       //peer can`t find blk according to the hash
-	DISCONNECT_TYPE                      //peer disconnect info raise by link
 	REJECT_TYPE
-	PEER_DISCONNECT
+	DISCONNECT_TYPE						//peer disconnect info raise by link
 )
 
 // message's header
@@ -150,6 +146,8 @@ func makeEmptyMessage(msgType MessageType) (Message, error) {
 		return &BlockReq{}, nil
 	case BLOCK_TYPE:
 		return &Block{}, nil
+	case TX_TYPE:
+		return &Transaction{}, nil
 	default:
 		return nil, fmt.Errorf("unknown message type %v", msgType)
 	}

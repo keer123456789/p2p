@@ -19,7 +19,7 @@ import (
 const (
 	persistentPeerRetryInterval = time.Minute
 	stallTickInterval           = 15 * time.Second
-	stallResponseTimeout        = 30 * time.Second
+	stallResponseTimeout        = 60 * time.Second
 	heartBeatInterval           = 10 * time.Second
 )
 

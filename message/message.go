@@ -35,7 +35,7 @@ const (
 	GET_BLOCK_TYPE                       //req blks from peer
 	NOT_FOUND_TYPE                       //peer can`t find blk according to the hash
 	REJECT_TYPE
-	DISCONNECT_TYPE						//peer disconnect info raise by link
+	DISCONNECT_TYPE //peer disconnect info raise by link
 )
 
 // message's header

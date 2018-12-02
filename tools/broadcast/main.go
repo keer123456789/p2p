@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"github.com/DSiSc/craft/log"
-	"github.com/DSiSc/justitia/tools/signal"
 	"github.com/DSiSc/p2p"
 	p2pconf "github.com/DSiSc/p2p/config"
 	"net"
@@ -13,7 +12,7 @@ import (
 )
 
 func sysSignalProcess(p *p2p.P2P) {
-	sysSignalProcess := signal.NewSignalSet()
+	sysSignalProcess := NewSignalSet()
 	sysSignalProcess.RegisterSysSignal(syscall.SIGINT, func(os.Signal, interface{}) {
 		log.Warn("handle signal SIGINT.")
 		//p.Stop()

@@ -235,10 +235,16 @@ func (service *P2P) stallHandler() {
 				continue
 			}
 			if service.isOutMsg(msg) {
-				log.Debug("stall handler register a %v type message To peer %s", msg.Payload.MsgType(), msg.To.ToString())
-				addPendingRespMsg(pendingResponses, msg)
+				if msg.Payload != nil {
+					log.Debug("stall handler register a %v type message To peer %s", msg.Payload.MsgType(), msg.To.ToString())
+					addPendingRespMsg(pendingResponses, msg)
+				}
 			} else {
-				log.Debug("stall handler receive a %v type message From %s", msg.Payload.MsgType(), msg.From.ToString())
+				if msg.Payload == nil {
+					log.Debug("stall handler receive a clear %s's pending response message", msg.From.ToString())
+				} else {
+					log.Debug("stall handler receive a %v type message From %s", msg.Payload.MsgType(), msg.From.ToString())
+				}
 				removePendingRespMsg(pendingResponses, msg)
 			}
 		case <-stallTicker.C:
@@ -284,7 +290,11 @@ func addPendingRespMsg(pendingQueue map[*common.NetAddress]map[message.MessageTy
 // remove message when receiving corresponding response.
 func removePendingRespMsg(pendingQueue map[*common.NetAddress]map[message.MessageType]time.Time, msg *InternalMsg) {
 	if pendingQueue[msg.From] != nil {
-		delete(pendingQueue[msg.From], msg.Payload.MsgType())
+		if msg.Payload != nil {
+			delete(pendingQueue[msg.From], msg.Payload.MsgType())
+		} else {
+			delete(pendingQueue, msg.From)
+		}
 	}
 }
 
@@ -408,13 +418,24 @@ func (service *P2P) stopPeer(addr *common.NetAddress) {
 		delete(service.pendingPeers, addr.IP)
 	}
 	if service.inboundPeers[addr.ToString()] != nil {
+		service.clearPendingResponse(service.inboundPeers[addr.ToString()])
 		service.inboundPeers[addr.ToString()].Stop()
 		delete(service.inboundPeers, addr.ToString())
 	}
 	if service.outbountPeers[addr.ToString()] != nil {
+		service.clearPendingResponse(service.outbountPeers[addr.ToString()])
 		service.outbountPeers[addr.ToString()].Stop()
 		delete(service.outbountPeers, addr.ToString())
 	}
+}
+
+// clear all pending response from this peer.
+func (service *P2P) clearPendingResponse(peer *Peer) {
+	cMsg := &InternalMsg{
+		From:    peer.GetAddr(),
+		Payload: nil,
+	}
+	service.stallChan <- cMsg
 }
 
 // addresses handler(request more addresses From neighbor peers)
@@ -453,7 +474,9 @@ func (service *P2P) recvHandler() {
 					State: LocalState(),
 				}
 				peer := service.GetPeerByAddress(msg.From)
-				service.sendMsg(peer, pingMsg)
+				if peer != nil {
+					service.sendMsg(peer, pingMsg)
+				}
 			case *message.PongMsg:
 				peer := service.GetPeerByAddress(msg.From)
 				peer.SetState(msg.Payload.(*message.PongMsg).State)

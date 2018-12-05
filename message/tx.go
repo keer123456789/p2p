@@ -1,6 +1,9 @@
 package message
 
-import "github.com/DSiSc/craft/types"
+import (
+	"github.com/DSiSc/craft/types"
+	"github.com/DSiSc/p2p/common"
+)
 
 // Transaction message
 type Transaction struct {
@@ -8,7 +11,7 @@ type Transaction struct {
 }
 
 func (this *Transaction) MsgId() types.Hash {
-	return *this.Tx.Data.Hash
+	return common.TxHash(this.Tx)
 }
 
 func (this *Transaction) MsgType() MessageType {

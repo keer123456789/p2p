@@ -37,9 +37,9 @@ type P2P struct {
 	isRunning     int32
 	addrManager   *AddressManager
 	state         uint64 // service's state
-	pendingPeers  map[string]*Peer
-	outbountPeers map[string]*Peer
-	inboundPeers  map[string]*Peer
+	pendingPeers  sync.Map
+	outbountPeers sync.Map
+	inboundPeers  sync.Map
 	lock          sync.RWMutex
 }
 
@@ -47,16 +47,13 @@ type P2P struct {
 func NewP2P(config *config.P2PConfig) (*P2P, error) {
 	addrManger := NewAddressManager(config.AddrBookFilePath)
 	return &P2P{
-		config:        config,
-		addrManager:   addrManger,
-		msgChan:       make(chan *InternalMsg),
-		internalChan:  make(chan *InternalMsg),
-		stallChan:     make(chan *InternalMsg),
-		quitChan:      make(chan struct{}),
-		isRunning:     0,
-		pendingPeers:  make(map[string]*Peer),
-		outbountPeers: make(map[string]*Peer),
-		inboundPeers:  make(map[string]*Peer),
+		config:       config,
+		addrManager:  addrManger,
+		msgChan:      make(chan *InternalMsg),
+		internalChan: make(chan *InternalMsg),
+		stallChan:    make(chan *InternalMsg),
+		quitChan:     make(chan struct{}),
+		isRunning:    0,
 	}, nil
 }
 
@@ -103,21 +100,33 @@ func (service *P2P) Start() error {
 
 // Stop stop p2p service
 func (service *P2P) Stop() {
+	// stop all peer.
+	service.pendingPeers.Range(
+		func(key, value interface{}) bool {
+			peer := value.(*Peer)
+			peer.Stop()
+			return true
+		},
+	)
+	service.outbountPeers.Range(
+		func(key, value interface{}) bool {
+			peer := value.(*Peer)
+			peer.Stop()
+			return true
+		},
+	)
+	service.inboundPeers.Range(
+		func(key, value interface{}) bool {
+			peer := value.(*Peer)
+			peer.Stop()
+			return true
+		},
+	)
+
 	service.lock.Lock()
 	if service.isRunning != 1 {
 		log.Error("p2p already stopped")
 	}
-
-	// stop all peer.
-	for _, peer := range service.outbountPeers {
-		peer.Stop()
-		delete(service.outbountPeers, peer.GetAddr().ToString())
-	}
-	for _, peer := range service.inboundPeers {
-		peer.Stop()
-		delete(service.outbountPeers, peer.GetAddr().ToString())
-	}
-
 	close(service.quitChan)
 	service.addrManager.Stop()
 	if service.listener != nil {
@@ -148,7 +157,7 @@ func (service *P2P) startListen(listener net.Listener) {
 		}
 
 		// check num of the inbound peer
-		if len(service.inboundPeers) > service.config.MaxConnInBound {
+		if service.GetInBountPeersCount() > service.config.MaxConnInBound {
 			conn.Close()
 			continue
 		}
@@ -180,21 +189,16 @@ func (service *P2P) initInbondPeer(peer *Peer) {
 // add pending peer
 func (service *P2P) addPendingPeer(peer *Peer) error {
 	log.Info("add peer %s To pending queue", peer.GetAddr().IP)
-	service.lock.Lock()
-	defer service.lock.Unlock()
-	if service.pendingPeers[peer.GetAddr().IP] != nil {
+	if _, ok := service.pendingPeers.LoadOrStore(peer.GetAddr().IP, peer); ok {
 		return fmt.Errorf("peer %s already in our pending peer list", peer.GetAddr().IP)
 	}
-	service.pendingPeers[peer.GetAddr().IP] = peer
 	return nil
 }
 
 // remove pending peer
 func (service *P2P) removePendingPeer(peer *Peer) {
 	log.Info("remove peer %s From pending queue", peer.GetAddr().IP)
-	service.lock.Lock()
-	defer service.lock.Unlock()
-	delete(service.pendingPeers, peer.GetAddr().IP)
+	service.pendingPeers.Delete(peer.GetAddr().IP)
 }
 
 // add inbound peer
@@ -211,15 +215,14 @@ func (service *P2P) addOutBoundPeer(peer *Peer) error {
 
 // add peer
 func (service *P2P) addPeer(inbound bool, peer *Peer) error {
-	service.lock.Lock()
-	defer service.lock.Unlock()
-	if service.inboundPeers[peer.GetAddr().ToString()] != nil || service.outbountPeers[peer.GetAddr().ToString()] != nil {
-		return fmt.Errorf("peer %s already in our connected peer list", peer.GetAddr().ToString())
-	}
 	if inbound {
-		service.inboundPeers[peer.GetAddr().ToString()] = peer
+		if _, ok := service.inboundPeers.LoadOrStore(peer.GetAddr().ToString(), peer); ok {
+			return fmt.Errorf("peer %s already in our inbound peer list", peer.GetAddr().ToString())
+		}
 	} else {
-		service.outbountPeers[peer.GetAddr().ToString()] = peer
+		if _, ok := service.outbountPeers.LoadOrStore(peer.GetAddr().ToString(), peer); ok {
+			return fmt.Errorf("peer %s already in our outbound peer list", peer.GetAddr().ToString())
+		}
 	}
 	return nil
 }
@@ -377,9 +380,16 @@ func (service *P2P) connectNormalPeers() {
 
 // check whether peer with this address have existed in the neighbor list
 func (service *P2P) containsPeer(addr *common.NetAddress) bool {
-	service.lock.RLock()
-	defer service.lock.RUnlock()
-	return service.pendingPeers[addr.IP] != nil || service.outbountPeers[addr.ToString()] != nil || service.inboundPeers[addr.ToString()] != nil
+	if _, ok := service.pendingPeers.Load(addr.IP); ok {
+		return true
+	}
+	if _, ok := service.outbountPeers.Load(addr.ToString()); ok {
+		return true
+	}
+	if _, ok := service.inboundPeers.Load(addr.ToString()); ok {
+		return true
+	}
+	return false
 }
 
 // connect To a peer
@@ -411,21 +421,20 @@ RETRY:
 
 // stop the peer with specified address
 func (service *P2P) stopPeer(addr *common.NetAddress) {
-	service.lock.Lock()
-	defer service.lock.Unlock()
-	if service.pendingPeers[addr.IP] != nil {
-		service.pendingPeers[addr.IP].Stop()
-		delete(service.pendingPeers, addr.IP)
+	if value, ok := service.pendingPeers.Load(addr.IP); ok {
+		peer := value.(*Peer)
+		peer.Stop()
+		service.pendingPeers.Delete(addr.IP)
 	}
-	if service.inboundPeers[addr.ToString()] != nil {
-		service.clearPendingResponse(service.inboundPeers[addr.ToString()])
-		service.inboundPeers[addr.ToString()].Stop()
-		delete(service.inboundPeers, addr.ToString())
+	if value, ok := service.inboundPeers.Load(addr.IP); ok {
+		peer := value.(*Peer)
+		peer.Stop()
+		service.inboundPeers.Delete(addr.IP)
 	}
-	if service.outbountPeers[addr.ToString()] != nil {
-		service.clearPendingResponse(service.outbountPeers[addr.ToString()])
-		service.outbountPeers[addr.ToString()].Stop()
-		delete(service.outbountPeers, addr.ToString())
+	if value, ok := service.outbountPeers.Load(addr.IP); ok {
+		peer := value.(*Peer)
+		peer.Stop()
+		service.outbountPeers.Delete(addr.IP)
 	}
 }
 
@@ -519,19 +528,24 @@ func (service *P2P) heartBeatHandler() {
 
 // BroadCast broad cast message To all neighbor peers
 func (service *P2P) BroadCast(msg message.Message) {
-	service.lock.RLock()
-	defer service.lock.RUnlock()
-	for _, peer := range service.outbountPeers {
-		if !peer.KnownMsg(msg) {
-			go service.sendMsg(peer, msg)
-		}
-	}
-
-	for _, peer := range service.inboundPeers {
-		if !peer.KnownMsg(msg) {
-			go service.sendMsg(peer, msg)
-		}
-	}
+	service.outbountPeers.Range(
+		func(key, value interface{}) bool {
+			peer := value.(*Peer)
+			if !peer.KnownMsg(msg) {
+				go service.sendMsg(peer, msg)
+			}
+			return true
+		},
+	)
+	service.inboundPeers.Range(
+		func(key, value interface{}) bool {
+			peer := value.(*Peer)
+			if !peer.KnownMsg(msg) {
+				go service.sendMsg(peer, msg)
+			}
+			return true
+		},
+	)
 }
 
 // SendMsg send message to a peer
@@ -601,34 +615,55 @@ func (service *P2P) registerPendingResp(msg *InternalMsg) {
 
 // GetOutBountPeersCount get out bount peer count
 func (service *P2P) GetOutBountPeersCount() int {
-	service.lock.RLock()
-	defer service.lock.RUnlock()
-	return len(service.outbountPeers)
+	count := 0
+	service.outbountPeers.Range(
+		func(key, value interface{}) bool {
+			count++
+			return true
+		},
+	)
+	return count
+}
+
+// GetOutBountPeersCount get out bount peer count
+func (service *P2P) GetInBountPeersCount() int {
+	count := 0
+	service.inboundPeers.Range(
+		func(key, value interface{}) bool {
+			count++
+			return true
+		},
+	)
+	return count
 }
 
 // GetPeers get service's inbound peers and outbound peers
 func (service *P2P) GetPeers() []*Peer {
-	service.lock.RLock()
-	defer service.lock.RUnlock()
 	peers := make([]*Peer, 0)
-	for _, peer := range service.inboundPeers {
-		peers = append(peers, peer)
-	}
-	for _, peer := range service.outbountPeers {
-		peers = append(peers, peer)
-	}
+	service.outbountPeers.Range(
+		func(key, value interface{}) bool {
+			peer := value.(*Peer)
+			peers = append(peers, peer)
+			return true
+		},
+	)
+	service.inboundPeers.Range(
+		func(key, value interface{}) bool {
+			peer := value.(*Peer)
+			peers = append(peers, peer)
+			return true
+		},
+	)
 	return peers
 }
 
 // GetPeerByAddress get a peer by net address
 func (service *P2P) GetPeerByAddress(addr *common.NetAddress) *Peer {
-	service.lock.RLock()
-	defer service.lock.RUnlock()
-	if service.inboundPeers[addr.ToString()] != nil {
-		return service.inboundPeers[addr.ToString()]
+	if value, ok := service.inboundPeers.Load(addr.ToString()); ok {
+		return value.(*Peer)
 	}
-	if service.outbountPeers[addr.ToString()] != nil {
-		return service.outbountPeers[addr.ToString()]
+	if value, ok := service.outbountPeers.Load(addr.ToString()); ok {
+		return value.(*Peer)
 	}
 	return nil
 }

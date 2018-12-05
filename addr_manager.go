@@ -28,8 +28,8 @@ const (
 // AddressManager is used To manage neighbor's address
 type AddressManager struct {
 	filePath  string
-	ourAddrs  map[string]*common.NetAddress
-	addresses map[string]*common.NetAddress
+	ourAddrs  sync.Map
+	addresses sync.Map
 	lock      sync.RWMutex
 	changed   bool
 	quitChan  chan interface{}
@@ -38,28 +38,23 @@ type AddressManager struct {
 // NewAddressManager create an address manager instance
 func NewAddressManager(filePath string) *AddressManager {
 	addresses := loadAddress(filePath)
-	return &AddressManager{
-		filePath:  filePath,
-		ourAddrs:  make(map[string]*common.NetAddress),
-		addresses: addresses,
-		quitChan:  make(chan interface{}),
+	addrManager := &AddressManager{
+		filePath: filePath,
+		quitChan: make(chan interface{}),
 	}
+	addrManager.AddAddresses(addresses)
+	return addrManager
 }
 
 // AddOurAddress add our local address.
 func (addrManager *AddressManager) AddOurAddress(addr *common.NetAddress) {
-	addrManager.lock.Lock()
-	defer addrManager.lock.Unlock()
-	if addrManager.ourAddrs[addr.ToString()] != nil {
-		return
+	if _, ok := addrManager.ourAddrs.LoadOrStore(addr.ToString(), addr); ok {
+		log.Debug("Add our address %s to address manager", addr.ToString())
 	}
-	addrManager.ourAddrs[addr.ToString()] = addr
 }
 
 // AddOurAddress add our local address.
 func (addrManager *AddressManager) AddLocalAddress(port int32) error {
-	addrManager.lock.Lock()
-	defer addrManager.lock.Unlock()
 	localIps, err := getLocalAddresses()
 	if err != nil {
 		return fmt.Errorf("failed To add our local address To address manager as:%v", err)
@@ -69,46 +64,35 @@ func (addrManager *AddressManager) AddLocalAddress(port int32) error {
 		if err != nil {
 			continue
 		}
-		if addrManager.ourAddrs[netAddr.ToString()] == nil {
-			addrManager.ourAddrs[netAddr.ToString()] = netAddr
-		}
+		addrManager.AddOurAddress(netAddr)
 	}
 	return nil
 }
 
 // OurAddresses get local address.
 func (addrManager *AddressManager) OurAddresses() []*common.NetAddress {
-	addrManager.lock.RLock()
-	defer addrManager.lock.RUnlock()
 	addrs := make([]*common.NetAddress, 0)
-	for _, addr := range addrManager.ourAddrs {
-		addrs = append(addrs, addr)
-	}
+	addrManager.ourAddrs.Range(
+		func(key, value interface{}) bool {
+			addr := value.(*common.NetAddress)
+			addrs = append(addrs, addr)
+			return true
+		},
+	)
 	return addrs
 }
 
 // IsOurAddress check whether the address is our address
 func (addrManager *AddressManager) IsOurAddress(addr *common.NetAddress) bool {
-	addrManager.lock.RLock()
-	defer addrManager.lock.RUnlock()
-	return addrManager.ourAddrs[addr.ToString()] != nil
+	_, ok := addrManager.ourAddrs.Load(addr.ToString())
+	return ok
 }
 
 // AddAddresses add new addresses
 func (addrManager *AddressManager) AddAddresses(addrs []*common.NetAddress) {
 	log.Debug("add %d addresses To book", len(addrs))
-	addrManager.lock.Lock()
-	defer addrManager.lock.Unlock()
 	for _, addr := range addrs {
-		if addrManager.ourAddrs[addr.ToString()] != nil {
-			continue
-		}
-
-		if addrManager.addresses[addr.ToString()] != nil {
-			continue
-		}
-		addrManager.addresses[addr.ToString()] = addr
-		addrManager.changed = true
+		addrManager.AddAddress(addr)
 	}
 }
 
@@ -117,22 +101,18 @@ func (addrManager *AddressManager) AddAddress(addr *common.NetAddress) {
 	log.Debug("add new address %s To book", addr.ToString())
 	addrManager.lock.Lock()
 	defer addrManager.lock.Unlock()
-	if addrManager.ourAddrs[addr.ToString()] != nil {
+	if _, ok := addrManager.ourAddrs.Load(addr.ToString()); ok {
 		return
 	}
 
-	if addrManager.addresses[addr.ToString()] != nil {
-		return
+	if _, ok := addrManager.addresses.LoadOrStore(addr.ToString(), addr); !ok {
+		addrManager.changed = true
 	}
-	addrManager.addresses[addr.ToString()] = addr
-	addrManager.changed = true
 }
 
 // RemoveAddress remove an address
 func (addrManager *AddressManager) RemoveAddress(addr *common.NetAddress) {
-	addrManager.lock.Lock()
-	defer addrManager.lock.Unlock()
-	delete(addrManager.addresses, addr.ToString())
+	addrManager.addresses.Delete(addr.ToString())
 	addrManager.changed = true
 }
 
@@ -162,22 +142,26 @@ func (addrManager *AddressManager) GetAddresses() []*common.NetAddress {
 
 // GetAddressCount get address count
 func (addrManager *AddressManager) GetAddressCount() int {
-	addrManager.lock.RLock()
-	defer addrManager.lock.RUnlock()
-	return len(addrManager.addresses)
+	count := 0
+	addrManager.addresses.Range(
+		func(key, value interface{}) bool {
+			count++
+			return true
+		},
+	)
+	return count
 }
 
 // GetAllAddress get all address
 func (addrManager *AddressManager) GetAllAddress() []*common.NetAddress {
-	addrManager.lock.RLock()
-	defer addrManager.lock.RUnlock()
 	addresses := make([]*common.NetAddress, 0)
-	if len(addrManager.addresses) <= 0 {
-		return addresses
-	}
-	for _, addr := range addrManager.addresses {
-		addresses = append(addresses, addr)
-	}
+	addrManager.addresses.Range(
+		func(key, value interface{}) bool {
+			addr := value.(*common.NetAddress)
+			addresses = append(addresses, addr)
+			return true
+		},
+	)
 	return addresses
 }
 
@@ -189,15 +173,20 @@ func (addrManager *AddressManager) NeedMoreAddrs() bool {
 // Save save addresses To file
 func (addrManager *AddressManager) Save() {
 	addrManager.lock.Lock()
-	defer addrManager.lock.Unlock()
 	if !addrManager.changed {
+		addrManager.lock.Unlock()
 		return
 	}
+	addrManager.lock.Unlock()
 
 	addrStrs := make([]string, 0)
-	for addrStr, _ := range addrManager.addresses {
-		addrStrs = append(addrStrs, addrStr)
-	}
+	addrManager.addresses.Range(
+		func(key, value interface{}) bool {
+			addrStr := key.(string)
+			addrStrs = append(addrStrs, addrStr)
+			return true
+		},
+	)
 
 	buf, err := json.Marshal(addrStrs)
 	fmt.Println(string(buf))
@@ -237,9 +226,9 @@ func (addrManager *AddressManager) saveHandler() {
 }
 
 // loadAddress load addresses From file.
-func loadAddress(filePath string) map[string]*common.NetAddress {
+func loadAddress(filePath string) []*common.NetAddress {
 	addrStrs := make([]string, 0)
-	addresses := make(map[string]*common.NetAddress)
+	addresses := make([]*common.NetAddress, 0)
 	if _, err := os.Stat(filePath); err != nil {
 		return addresses
 	}
@@ -261,7 +250,7 @@ func loadAddress(filePath string) map[string]*common.NetAddress {
 			log.Warn("encounter an invalid address %s", addrStr)
 			continue
 		}
-		addresses[addrStr] = addr
+		addresses = append(addresses, addr)
 	}
 	log.Debug("load %d addresses From file %s", len(addresses), filePath)
 	return addresses

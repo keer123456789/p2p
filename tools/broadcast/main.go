@@ -116,8 +116,10 @@ Examples:
 			tmsg := newTraceMsg(localAddr)
 			p2p.BroadCast(tmsg)
 			go reportTraceRoutes(tmsg, displayServer)
+			go reportNeighbors(localAddrStr, p2p.GetPeers(), displayServer)
+		} else {
+			go reportNeighbors(localAddrStr, p2p.GetPeers(), displayServer)
 		}
-		go reportNeighbors(localAddrStr, p2p.GetPeers(), displayServer)
 		<-timer.C
 	}
 

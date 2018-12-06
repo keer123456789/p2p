@@ -5,22 +5,28 @@ import (
 	"github.com/DSiSc/craft/log"
 	"github.com/gorilla/mux"
 	"net/http"
-	"strings"
 	"sync"
+	"time"
 )
 
 const SUCCESS = "SUCCESS"
 
 type DisplayServer struct {
-	topos     map[string]map[string]bool
-	msgRoutes map[string][]map[string]string
-	lock      sync.RWMutex
+	topos           map[string][]string
+	msgRoutes       map[string][]map[string]string
+	timeoutCache    map[string]time.Time
+	timeoutInterval time.Duration
+	quitChan        chan interface{}
+	lock            sync.RWMutex
 }
 
-func NewDisplayServer() *DisplayServer {
+func NewDisplayServer(timeoutInterval time.Duration) *DisplayServer {
 	return &DisplayServer{
-		topos:     make(map[string]map[string]bool),
-		msgRoutes: make(map[string][]map[string]string),
+		topos:           make(map[string][]string),
+		msgRoutes:       make(map[string][]map[string]string),
+		timeoutCache:    make(map[string]time.Time),
+		timeoutInterval: timeoutInterval,
+		quitChan:        make(chan interface{}),
 	}
 }
 
@@ -37,20 +43,8 @@ func (this *DisplayServer) ReportNeighbors(w http.ResponseWriter, r *http.Reques
 
 	// record topo
 	this.lock.Lock()
-	if this.topos[addr] == nil {
-		this.topos[addr] = make(map[string]bool)
-	}
-	for _, neighbor := range neighbors {
-		neighborAddr := neighbor
-		if strings.HasPrefix(neighborAddr, "tcp://") {
-			neighborAddr = neighborAddr[6:]
-		}
-		if this.topos[neighborAddr] == nil {
-			this.topos[neighborAddr] = make(map[string]bool)
-		}
-		this.topos[addr][neighborAddr] = true
-		this.topos[neighborAddr][addr] = true
-	}
+	this.topos[addr] = neighbors
+	this.timeoutCache[addr] = time.Now().Add(this.timeoutInterval)
 	this.lock.Unlock()
 	response(SUCCESS, w)
 }
@@ -85,15 +79,39 @@ func (this *DisplayServer) ReportTraceMsg(w http.ResponseWriter, r *http.Request
 			this.msgRoutes[msgId][index][addr] = previousPeer
 		}
 	}
+	this.timeoutCache[msgId] = time.Now().Add(this.timeoutInterval)
 	this.lock.Unlock()
 	response(SUCCESS, w)
 }
 
-func (this *DisplayServer) Refresh() {
-	this.lock.RLock()
-	this.topos = make(map[string]map[string]bool)
-	this.msgRoutes = make(map[string][]map[string]string)
-	this.lock.RUnlock()
+func (this *DisplayServer) Start() {
+	go this.refreshHandler()
+}
+
+func (this *DisplayServer) Stop() {
+	close(this.quitChan)
+}
+
+func (this *DisplayServer) refreshHandler() {
+	refreshInterval := time.NewTicker(30 * time.Second)
+	for {
+		select {
+		case <-refreshInterval.C:
+			this.lock.RLock()
+			now := time.Now()
+			for key, deadline := range this.timeoutCache {
+				if now.Before(deadline) {
+					continue
+				}
+				delete(this.topos, key)
+				delete(this.msgRoutes, key)
+				delete(this.timeoutCache, key)
+			}
+			this.lock.RUnlock()
+		case <-this.quitChan:
+			return
+		}
+	}
 }
 
 func (this *DisplayServer) GetNetTopo(w http.ResponseWriter, r *http.Request) {

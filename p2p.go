@@ -426,15 +426,15 @@ func (service *P2P) stopPeer(addr *common.NetAddress) {
 		peer.Stop()
 		service.pendingPeers.Delete(addr.IP)
 	}
-	if value, ok := service.inboundPeers.Load(addr.IP); ok {
+	if value, ok := service.inboundPeers.Load(addr.ToString()); ok {
 		peer := value.(*Peer)
 		peer.Stop()
-		service.inboundPeers.Delete(addr.IP)
+		service.inboundPeers.Delete(addr.ToString())
 	}
-	if value, ok := service.outbountPeers.Load(addr.IP); ok {
+	if value, ok := service.outbountPeers.Load(addr.ToString()); ok {
 		peer := value.(*Peer)
 		peer.Stop()
-		service.outbountPeers.Delete(addr.IP)
+		service.outbountPeers.Delete(addr.ToString())
 	}
 }
 

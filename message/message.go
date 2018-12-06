@@ -36,6 +36,7 @@ const (
 	NOT_FOUND_TYPE                       //peer can`t find blk according to the hash
 	REJECT_TYPE
 	DISCONNECT_TYPE //peer disconnect info raise by link
+	TRACE_TYPE      //trace message
 )
 
 // message's header
@@ -148,6 +149,8 @@ func makeEmptyMessage(msgType MessageType) (Message, error) {
 		return &Block{}, nil
 	case TX_TYPE:
 		return &Transaction{}, nil
+	case TRACE_TYPE:
+		return &TraceMsg{}, nil
 	default:
 		return nil, fmt.Errorf("unknown message type %v", msgType)
 	}

@@ -488,7 +488,9 @@ func (service *P2P) recvHandler() {
 				}
 			case *message.PongMsg:
 				peer := service.GetPeerByAddress(msg.From)
-				peer.SetState(msg.Payload.(*message.PongMsg).State)
+				if peer != nil {
+					peer.SetState(msg.Payload.(*message.PongMsg).State)
+				}
 			case *message.AddrReq:
 				addrs := service.addrManager.GetAddresses()
 				addrMsg := &message.Addr{

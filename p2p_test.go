@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"errors"
+	"github.com/DSiSc/craft/types"
 	"github.com/DSiSc/monkey"
 	"github.com/DSiSc/p2p/common"
 	"github.com/DSiSc/p2p/config"
@@ -37,7 +38,7 @@ func mockPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, ms
 func TestNewP2P(t *testing.T) {
 	assert := assert.New(t)
 	conf := mockConfig()
-	p2p, err := NewP2P(conf)
+	p2p, err := NewP2P(conf, &eventCenter{})
 	assert.Nil(err)
 	assert.NotNil(p2p)
 }
@@ -46,7 +47,7 @@ func TestP2P_Start(t *testing.T) {
 	defer monkey.UnpatchAll()
 	assert := assert.New(t)
 	conf := mockConfig()
-	p2p, err := NewP2P(conf)
+	p2p, err := NewP2P(conf, &eventCenter{})
 	assert.Nil(err)
 
 	// mock listen
@@ -62,7 +63,7 @@ func TestP2P_Stop(t *testing.T) {
 	defer monkey.UnpatchAll()
 	assert := assert.New(t)
 	conf := mockConfig()
-	p2p, err := NewP2P(conf)
+	p2p, err := NewP2P(conf, &eventCenter{})
 	assert.Nil(err)
 
 	// mock listen
@@ -84,7 +85,7 @@ func TestP2P_BroadCast(t *testing.T) {
 	assert := assert.New(t)
 	conf := mockConfig()
 	conf.PersistentPeers = "tcp://192.168.1.1:8080"
-	p2p, err := NewP2P(conf)
+	p2p, err := NewP2P(conf, &eventCenter{})
 	assert.Nil(err)
 	msg := &message.PingMsg{
 		State: 1,
@@ -142,7 +143,7 @@ func TestP2P_SendMsg(t *testing.T) {
 	assert := assert.New(t)
 	conf := mockConfig()
 	conf.PersistentPeers = "tcp://192.168.1.1:8080"
-	p2p, err := NewP2P(conf)
+	p2p, err := NewP2P(conf, &eventCenter{})
 	assert.Nil(err)
 	//mock peer
 	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
@@ -203,7 +204,7 @@ func TestP2P_GetOutBountPeersCount(t *testing.T) {
 	conf := mockConfig()
 	conf.PersistentPeers = "tcp://192.168.1.1:8080"
 
-	p2p, err := NewP2P(conf)
+	p2p, err := NewP2P(conf, &eventCenter{})
 	assert.Nil(err)
 	assert.Equal(0, p2p.GetOutBountPeersCount())
 
@@ -240,7 +241,7 @@ func TestP2P_GetPeerByAddress(t *testing.T) {
 	assert := assert.New(t)
 	conf := mockConfig()
 	conf.PersistentPeers = "tcp://192.168.1.1:8080"
-	p2p, err := NewP2P(conf)
+	p2p, err := NewP2P(conf, &eventCenter{})
 	assert.Nil(err)
 
 	//mock peer
@@ -276,7 +277,7 @@ func TestP2P_GetPeers(t *testing.T) {
 	assert := assert.New(t)
 	conf := mockConfig()
 	conf.PersistentPeers = "tcp://192.168.1.1:8080"
-	p2p, err := NewP2P(conf)
+	p2p, err := NewP2P(conf, &eventCenter{})
 	// mock peer
 	serverAddr, _ := common.ParseNetAddress(conf.ListenAddress)
 	addr, _ := common.ParseNetAddress(conf.PersistentPeers)
@@ -314,7 +315,7 @@ func TestP2P_Gather(t *testing.T) {
 	assert := assert.New(t)
 	conf := mockConfig()
 	conf.PersistentPeers = "tcp://192.168.1.1:8080"
-	p2p, err := NewP2P(conf)
+	p2p, err := NewP2P(conf, &eventCenter{})
 	assert.Nil(err)
 
 	//mock peer
@@ -395,4 +396,36 @@ func (this *testListener) Close() error {
 
 func (this *testListener) Addr() net.Addr {
 	return nil
+}
+
+type eventCenter struct {
+}
+
+// subscriber subscribe specified eventType with eventFunc
+func (*eventCenter) Subscribe(eventType types.EventType, eventFunc types.EventFunc) types.Subscriber {
+	return nil
+}
+
+// subscriber unsubscribe specified eventType
+func (*eventCenter) UnSubscribe(eventType types.EventType, subscriber types.Subscriber) (err error) {
+	return nil
+}
+
+// notify subscriber of eventType
+func (*eventCenter) Notify(eventType types.EventType, value interface{}) (err error) {
+	return nil
+}
+
+// notify specified eventFunc
+func (*eventCenter) NotifySubscriber(eventFunc types.EventFunc, value interface{}) {
+
+}
+
+// notify subscriber traversing all events
+func (*eventCenter) NotifyAll() (errs []error) {
+	return nil
+}
+
+// unsubscrible all event
+func (*eventCenter) UnSubscribeAll() {
 }

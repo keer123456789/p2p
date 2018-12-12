@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/DSiSc/craft/log"
+	"github.com/DSiSc/craft/types"
 	"github.com/DSiSc/p2p/common"
 	"github.com/DSiSc/p2p/config"
 	"github.com/DSiSc/p2p/message"
@@ -40,11 +41,12 @@ type P2P struct {
 	pendingPeers  sync.Map
 	outbountPeers sync.Map
 	inboundPeers  sync.Map
+	center        types.EventCenter
 	lock          sync.RWMutex
 }
 
 // NewP2P create a p2p service instance
-func NewP2P(config *config.P2PConfig) (*P2P, error) {
+func NewP2P(config *config.P2PConfig, center types.EventCenter) (*P2P, error) {
 	addrManger := NewAddressManager(config.AddrBookFilePath)
 	return &P2P{
 		config:       config,
@@ -54,6 +56,7 @@ func NewP2P(config *config.P2PConfig) (*P2P, error) {
 		stallChan:    make(chan *InternalMsg),
 		quitChan:     make(chan struct{}),
 		isRunning:    0,
+		center:       center,
 	}, nil
 }
 
@@ -224,6 +227,7 @@ func (service *P2P) addPeer(inbound bool, peer *Peer) error {
 			return fmt.Errorf("peer %s already in our outbound peer list", peer.GetAddr().ToString())
 		}
 	}
+	service.center.Notify(types.EventAddPeer, peer.GetAddr())
 	return nil
 }
 
@@ -425,16 +429,19 @@ func (service *P2P) stopPeer(addr *common.NetAddress) {
 		peer := value.(*Peer)
 		peer.Stop()
 		service.pendingPeers.Delete(addr.IP)
+		service.center.Notify(types.EventRemovePeer, addr)
 	}
 	if value, ok := service.inboundPeers.Load(addr.ToString()); ok {
 		peer := value.(*Peer)
 		peer.Stop()
 		service.inboundPeers.Delete(addr.ToString())
+		service.center.Notify(types.EventRemovePeer, addr)
 	}
 	if value, ok := service.outbountPeers.Load(addr.ToString()); ok {
 		peer := value.(*Peer)
 		peer.Stop()
 		service.outbountPeers.Delete(addr.ToString())
+		service.center.Notify(types.EventRemovePeer, addr)
 	}
 }
 
@@ -505,6 +512,9 @@ func (service *P2P) recvHandler() {
 				service.addrManager.AddAddresses(addrMsg.NetAddresses)
 			default:
 				service.msgChan <- msg
+				if service.config.TraceMsg {
+					service.center.Notify(types.EventNewMsg, msg)
+				}
 			}
 		case <-service.quitChan:
 			return

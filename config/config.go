@@ -7,4 +7,6 @@ type P2PConfig struct {
 	MaxConnOutBound  int    // max connection out bound
 	MaxConnInBound   int    // max connection in bound
 	PersistentPeers  string // persistent peers
+	TraceServer      string //p2p test trace server address
+	TraceMsg         bool   // p2p message trace flag
 }

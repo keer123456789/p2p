@@ -84,7 +84,7 @@ Examples:
 	}
 
 	// create p2p
-	p2p, err := p2p.NewP2P(conf)
+	p2p, err := p2p.NewP2P(conf, tools.NewP2PTestEventCenter())
 	if err != nil {
 		fmt.Fprintf(
 			os.Stderr,

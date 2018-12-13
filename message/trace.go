@@ -5,7 +5,7 @@ import (
 	"github.com/DSiSc/p2p/common"
 )
 
-// TraceMsg is a test message, used to trace the message route in p2p.
+// DebugP2P is a test message, used to trace the message route in p2p.
 type TraceMsg struct {
 	ID     types.Hash           `json:"id"`
 	Routes []*common.NetAddress `json:"routes"`

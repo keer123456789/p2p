@@ -4,12 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"github.com/DSiSc/blockchain"
 	"github.com/DSiSc/blockchain/config"
-	"github.com/DSiSc/craft/log"
 	"github.com/DSiSc/craft/types"
 	"github.com/DSiSc/p2p"
 	"github.com/DSiSc/p2p/common"
@@ -17,23 +15,18 @@ import (
 	"github.com/DSiSc/p2p/message"
 	"github.com/DSiSc/p2p/tools"
 	"math/rand"
-	"net/http"
 	"os"
+	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 )
 
 func sysSignalProcess() {
-	sysSignalProcess := NewSignalSet()
-	sysSignalProcess.RegisterSysSignal(syscall.SIGINT, func(os.Signal, interface{}) {
-		log.Warn("handle signal SIGINT.")
-		os.Exit(1)
-	})
-	sysSignalProcess.RegisterSysSignal(syscall.SIGTERM, func(os.Signal, interface{}) {
-		log.Warn("handle signal SIGTERM.")
-		os.Exit(1)
-	})
-	go sysSignalProcess.CatchSysSignal()
+	c := make(chan os.Signal)
+	signal.Notify(c, syscall.SIGINT, syscall.SIGTERM)
+	<-c
+	os.Exit(0)
 }
 
 func main() {
@@ -48,19 +41,19 @@ func main() {
 	flagSet.StringVar(&addrBookPath, "path", "./address_book.json", "Address book file path")
 	flagSet.StringVar(&listenAddress, "listen", "tcp://0.0.0.0:8888", "Listen address")
 	flagSet.StringVar(&persistentPeers, "peers", "", "Persistent peers")
-	flagSet.IntVar(&maxConnOutBound, "out", 20, "Max num of outbound peer")
-	flagSet.IntVar(&maxConnInBound, "in", 60, "Max num of out inbound peer")
+	flagSet.IntVar(&maxConnOutBound, "out", 4, "Max num of outbound peer")
+	flagSet.IntVar(&maxConnInBound, "in", 8, "Max num of out inbound peer")
 	flagSet.StringVar(&localAddrStr, "local_addr", "", "local address to identify this peer")
-	flagSet.StringVar(&displayServer, "display_server", "", "trace info display server address")
+	flagSet.StringVar(&displayServer, "display_server", "localhost:8080", "trace info display server address")
 	flagSet.BoolVar(&traceMaster, "master", false, "trace master")
 	flagSet.Usage = func() {
 		fmt.Println(`Justitia blockchain p2p test tool.
 
 Usage:
-	broadcast [-path ./address_book.json] [-listen tcp://0.0.0.0:8080] [-peers tcp://192.168.1.100:1080] [-out 20] [-in 60]]
+	broadcast [-path ./address_book.json] [-display_server localhost:8080] [-local_addr 192.168.1.101] [-listen tcp://0.0.0.0:8080] [-peers tcp://192.168.1.100:1080] [-out 4] [-in 8]
 
 Examples:
-	broadcast -peers tcp://192.168.1.100:1080`)
+	broadcast -local_addr 192.168.1.101 -peers tcp://192.168.1.100:1080`)
 		fmt.Println("Flags:")
 		flagSet.PrintDefaults()
 	}
@@ -73,68 +66,66 @@ Examples:
 		PersistentPeers:  persistentPeers,
 		MaxConnOutBound:  maxConnOutBound,
 		MaxConnInBound:   maxConnInBound,
+		DebugServer:      displayServer,
+		DebugP2P:         true,
+		DebugAddr:        localAddrStr,
 	}
-	localAddr, err := common.ParseNetAddress(localAddrStr)
+
+	// listen address
+	listenAddr, err := common.ParseNetAddress(listenAddress)
 	if err != nil {
-		fmt.Fprintf(
-			os.Stderr,
-			"invalid local_addr, as: %v", err,
-		)
+		fmt.Printf("invalid listen address, as: %v", err)
+		os.Exit(1)
+	}
+	localAddr, err := common.ParseNetAddress(localAddrStr + ":" + strconv.Itoa(int(listenAddr.Port)))
+	if err != nil {
+		fmt.Printf("invalid local_addr, as: %v", err)
 		os.Exit(1)
 	}
 
 	// create p2p
 	p2p, err := p2p.NewP2P(conf, tools.NewP2PTestEventCenter())
 	if err != nil {
-		fmt.Fprintf(
-			os.Stderr,
-			"failed to create p2p, as: %v", err,
-		)
+		fmt.Printf("failed to create p2p, as: %v", err)
 		os.Exit(1)
 	}
 
 	// start p2p
 	err = p2p.Start()
 	if err != nil {
-		fmt.Fprintf(
-			os.Stderr,
-			"failed to start p2p, as: %v", err,
-		)
+		fmt.Printf("failed to start p2p, as: %v", err)
 		os.Exit(1)
 	}
 
 	// start trace handler
-	taceHandler := NewTraceMsgHandler(localAddr, p2p, displayServer)
+	taceHandler := NewTraceMsgHandler(localAddr, p2p)
 	taceHandler.Start()
 
-	sysSignalProcess()
+	// catch system exit signal
+	go sysSignalProcess()
 
+	// init sleep, Wait for the connection to be established successfully
+	time.Sleep(120 * time.Second)
 	// send trace message periodically
 	timer := time.NewTicker(30 * time.Second)
 	for {
 		if traceMaster {
 			tmsg := newTraceMsg(localAddr)
 			p2p.BroadCast(tmsg)
-			go reportTraceRoutes(tmsg, displayServer)
-			go reportNeighbors(localAddrStr, p2p.GetPeers(), displayServer)
-		} else {
-			go reportNeighbors(localAddrStr, p2p.GetPeers(), displayServer)
 		}
 		<-timer.C
 	}
-
 }
 
+// create a random trace message
 func newTraceMsg(localAddr *common.NetAddress) *message.TraceMsg {
 	id := randomHash()
-	routes := make([]*common.NetAddress, 0)
-	routes = append(routes, localAddr)
 	return &message.TraceMsg{
-		ID:     id,
-		Routes: routes,
+		ID: id,
 	}
 }
 
+// create a random hash
 func randomHash() (hash types.Hash) {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, rand.Int63())
@@ -144,32 +135,46 @@ func randomHash() (hash types.Hash) {
 	return
 }
 
-func reportTraceRoutes(tmsg *message.TraceMsg, displayServer string) {
-	stringRoutes := make([]string, 0)
-	for _, route := range tmsg.Routes {
-		stringRoutes = append(stringRoutes, route.ToString())
-	}
-	tmsgByte, err := json.Marshal(stringRoutes)
-	if err != nil {
-		log.Error("failed to encode trace message routes, as: %v", err)
-	}
-	_, err = http.Post("http://"+displayServer+"/trace_msg/0x"+fmt.Sprintf("%x", tmsg.ID), "application/json", bytes.NewReader(tmsgByte))
-	if err != nil {
-		log.Error("failed to send trace message to display server, as:%v", err)
+// TraceMsgHandler is the trace message handler
+type TraceMsgHandler struct {
+	localAddr *common.NetAddress
+	p2p       p2p.P2PAPI
+	quitChan  chan interface{}
+}
+
+// NewTraceMsgHandler create a new trace message handler
+func NewTraceMsgHandler(localAddr *common.NetAddress, p2p p2p.P2PAPI) *TraceMsgHandler {
+	return &TraceMsgHandler{
+		localAddr: localAddr,
+		p2p:       p2p,
+		quitChan:  make(chan interface{}),
 	}
 }
 
-func reportNeighbors(localAddr string, peers []*p2p.Peer, displayServer string) {
-	stringPeers := make([]string, 0)
-	for _, peer := range peers {
-		stringPeers = append(stringPeers, peer.GetAddr().ToString())
+// Start start handler
+func (this *TraceMsgHandler) Start() {
+	go this.recvHandler()
+}
+
+// Stop stop handler
+func (this *TraceMsgHandler) Stop() {
+	close(this.quitChan)
+}
+
+// message receive routine
+func (this *TraceMsgHandler) recvHandler() {
+	msgChan := this.p2p.MessageChan()
+	for {
+		select {
+		case msg := <-msgChan:
+			switch msg.Payload.MsgType() {
+			case message.TRACE_TYPE:
+				tmsg := msg.Payload.(*message.TraceMsg)
+				this.p2p.BroadCast(tmsg)
+			}
+		case <-this.quitChan:
+			return
+		}
 	}
-	pmsgByte, err := json.Marshal(stringPeers)
-	if err != nil {
-		log.Error("failed to encode peer neighbors, as: %v", err)
-	}
-	_, err = http.Post("http://"+displayServer+"/neighbor/"+localAddr, "application/json", bytes.NewReader(pmsgByte))
-	if err != nil {
-		log.Error("failed to send neighbor info to display server, as:%v", err)
-	}
+
 }

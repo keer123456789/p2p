@@ -44,7 +44,7 @@ func TestNewInboundPeer(t *testing.T) {
 	msgChan := make(chan *InternalMsg)
 	peer := NewInboundPeer(mockServerAddress(), mockAddress(), msgChan, &testConn{})
 	assert.NotNil(peer)
-	assert.False(peer.outBound)
+	assert.False(peer.outBound.Load().(bool))
 }
 
 func TestNewOutboundPeer(t *testing.T) {
@@ -53,7 +53,7 @@ func TestNewOutboundPeer(t *testing.T) {
 	peer := NewOutboundPeer(mockServerAddress(), mockAddress(), true, msgChan)
 	assert.NotNil(peer)
 	assert.True(peer.persistent)
-	assert.True(peer.outBound)
+	assert.True(peer.outBound.Load().(bool))
 }
 
 func TestPeer_Start(t *testing.T) {

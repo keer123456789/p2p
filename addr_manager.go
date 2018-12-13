@@ -265,6 +265,9 @@ func getLocalAddresses() ([]string, error) {
 		return nil, errors.New("failed To get system's interfaces")
 	}
 	for _, i := range ifaces {
+		if skipInterface(i) {
+			continue
+		}
 		addrs, err := i.Addrs()
 		if err != nil {
 			log.Warn("failed To get interface's address")
@@ -288,4 +291,14 @@ func getLocalAddresses() ([]string, error) {
 		}
 	}
 	return ips, nil
+}
+
+func skipInterface(iface net.Interface) bool {
+	if iface.Flags&net.FlagUp == 0 {
+		return true // interface down
+	}
+	if iface.Flags&net.FlagLoopback != 0 {
+		return true // loopback interface
+	}
+	return false
 }

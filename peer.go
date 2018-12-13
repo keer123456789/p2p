@@ -10,6 +10,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -22,7 +23,7 @@ const (
 // Peer represent the peer
 type Peer struct {
 	version      uint32
-	outBound     bool
+	outBound     atomic.Value
 	persistent   bool
 	serverAddr   *common.NetAddress
 	addr         *common.NetAddress
@@ -52,7 +53,6 @@ func newPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msg
 	peer := &Peer{
 		serverAddr:   serverAddr,
 		addr:         addr,
-		outBound:     outBound,
 		persistent:   persistent,
 		internalChan: make(chan message.Message),
 		sendChan:     make(chan *InternalMsg),
@@ -61,6 +61,7 @@ func newPeer(serverAddr, addr *common.NetAddress, outBound, persistent bool, msg
 		knownMsgs:    common.NewRingBuffer(1024),
 		isRunning:    0,
 	}
+	peer.outBound.Store(outBound)
 	if !outBound && conn != nil {
 		peer.conn = NewPeerConn(conn, peer.internalChan)
 	}
@@ -76,7 +77,7 @@ func (peer *Peer) Start() error {
 		return fmt.Errorf("peer %s has been started", peer.addr.ToString())
 	}
 
-	if peer.outBound {
+	if peer.outBound.Load().(bool) {
 		log.Info("Start outbound peer %s", peer.addr.ToString())
 		err := peer.initConn()
 		if err != nil {
@@ -176,7 +177,7 @@ func (peer *Peer) readVersionMessage() error {
 	if err != nil {
 		return err
 	}
-	if !peer.outBound {
+	if !peer.outBound.Load().(bool) {
 		vmsg := msg.(*message.Version)
 		peer.addr.Port = vmsg.PortMe
 	}
@@ -349,9 +350,14 @@ func (peer *Peer) GetState() uint64 {
 	return peer.state
 }
 
-// KnownMsg check if the peer already known this message
+// KnownMsg check whether the peer already known this message
 func (peer *Peer) KnownMsg(msg message.Message) bool {
 	return peer.knownMsgs.Exist(msg.MsgId())
+}
+
+// IsOutBound check whether the peer is outbound peer.
+func (peer *Peer) IsOutBound() bool {
+	return peer.outBound.Load().(bool)
 }
 
 //disconnectNotify push disconnect msg To channel

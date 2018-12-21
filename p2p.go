@@ -43,6 +43,7 @@ type P2P struct {
 	inboundPeers  sync.Map
 	center        types.EventCenter
 	lock          sync.RWMutex
+	debugHandler  *DebugHandler
 }
 
 // NewP2P create a p2p service instance
@@ -98,6 +99,12 @@ func (service *P2P) Start() error {
 	go service.heartBeatHandler()    // start heartbeat handler
 
 	service.isRunning = 1
+
+	// debug p2p
+	if service.config.DebugP2P {
+		service.debugHandler = NewDebugHandler(service, service.center, service.config.DebugServer)
+		service.debugHandler.Start()
+	}
 	return nil
 }
 
@@ -138,6 +145,11 @@ func (service *P2P) Stop() {
 
 	service.isRunning = 0
 	service.lock.Unlock()
+
+	// stop debug handler if exist
+	if service.debugHandler != nil {
+		service.debugHandler.Stop()
+	}
 }
 
 // recvHandler listen To accept connection From inbound peer.
@@ -512,8 +524,8 @@ func (service *P2P) recvHandler() {
 				service.addrManager.AddAddresses(addrMsg.NetAddresses)
 			default:
 				service.msgChan <- msg
-				if service.config.TraceMsg {
-					service.center.Notify(types.EventNewMsg, msg)
+				if service.config.DebugP2P {
+					service.center.Notify(types.EventRecvNewMsg, msg)
 				}
 			}
 		case <-service.quitChan:
@@ -558,6 +570,13 @@ func (service *P2P) BroadCast(msg message.Message) {
 			return true
 		},
 	)
+	if service.config.DebugP2P {
+		imsg := &InternalMsg{
+			From:    service.addrManager.OurAddresses()[0],
+			Payload: msg,
+		}
+		service.center.Notify(types.EventBroadCastMsg, imsg)
+	}
 }
 
 // SendMsg send message to a peer
@@ -590,18 +609,16 @@ func (service *P2P) Gather(peerFilter PeerFilter, reqMsg message.Message) error 
 		}
 	}
 
-Start:
-	if len(reqPeers) > 0 {
-		index := rand.Intn(len(reqPeers))
-		peer := reqPeers[index]
-		err := service.sendMsg(peer, reqMsg)
-		if err == nil {
-			return nil
-		}
-		reqPeers = append(reqPeers[:index], reqPeers[index+1:]...)
-		goto Start
+	if len(reqPeers) <= 0 {
+		return errors.New("no suitable peer")
 	}
-	return errors.New("no suitable peer")
+
+	for _, peer := range peers {
+		if peerFilter(peer.GetState()) {
+			service.sendMsg(peer, reqMsg)
+		}
+	}
+	return nil
 }
 
 // sendMsg send message To a peer.

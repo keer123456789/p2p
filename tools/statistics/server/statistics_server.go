@@ -20,11 +20,11 @@ func main() {
 	var refreshInterval int
 	flagSet := flag.NewFlagSet("statistics-server", flag.ExitOnError)
 	flagSet.StringVar(&listenAddr, "listen", "0.0.0.0:8080", "statistics listen address, default 0.0.0.0:8080")
-	flagSet.IntVar(&refreshInterval, "refreshHandler", 120, "p2p topo refreshHandler interval (s)")
+	flagSet.IntVar(&refreshInterval, "refreshInterval", 120, "p2p topo refreshHandler interval (s)")
 	flagSet.Usage = func() {
 		fmt.Println(`Justitia blockchain p2p test statistics server.
 Usage:
-	statistics [-listen 0.0.0.0:8080] [-refreshHandler 60]
+	statistics [-listen 0.0.0.0:8080] [-refreshInterval 60]
 
 Examples:
 	statistics -listen 0.0.0.0:8080`)

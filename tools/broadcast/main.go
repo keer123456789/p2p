@@ -44,8 +44,8 @@ func main() {
 	flagSet.IntVar(&maxConnOutBound, "out", 4, "Max num of outbound peer")
 	flagSet.IntVar(&maxConnInBound, "in", 8, "Max num of out inbound peer")
 	flagSet.StringVar(&localAddrStr, "local_addr", "", "local address to identify this peer")
-	flagSet.StringVar(&displayServer, "display_server", "localhost:8080", "trace info display server address")
-	flagSet.BoolVar(&traceMaster, "master", false, "trace master")
+	flagSet.StringVar(&displayServer, "display_server", "localhost:8080", "Statistics server address")
+	flagSet.BoolVar(&traceMaster, "master", false, "Master peer")
 	flagSet.Usage = func() {
 		fmt.Println(`Justitia blockchain p2p test tool.
 
@@ -120,6 +120,7 @@ Examples:
 // create a random trace message
 func newTraceMsg(localAddr *common.NetAddress) *message.TraceMsg {
 	id := randomHash()
+	fmt.Printf("%x", id)
 	return &message.TraceMsg{
 		ID: id,
 	}
